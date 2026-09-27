@@ -1,0 +1,12 @@
+node_modules
+dist
+.data
+.env*
+.git
+.github
+.claude
+test
+scripts
+docs
+*.md
+*.sqlite*
