@@ -16,7 +16,7 @@ services:
     ports:
       # Only the reverse proxy should reach this port. Bind it to the LAN IP of the NAS
       # (or put the proxy on the same Docker network and remove `ports` entirely).
-      - "30480:8080"
+      - "30504:8080"
     environment:
       APP_URL: "https://ebbwell.CHANGE_ME.example"
       # Authentik → Applications → Providers → OAuth2/OpenID (see docs/DEPLOY.md)

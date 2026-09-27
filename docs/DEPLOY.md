@@ -1,7 +1,7 @@
 # Deploying Ebbwell on TrueNAS SCALE behind Authentik
 
 ```
-Phone / browser ──HTTPS──► reverse proxy ──HTTP──► TrueNAS :30480 ──► Ebbwell container ──► /mnt/<pool>/apps/ebbwell
+Phone / browser ──HTTPS──► reverse proxy ──HTTP──► TrueNAS :30504 ──► Ebbwell container ──► /mnt/<pool>/apps/ebbwell
                                                                          │   │
                                   Authentik ◄──── OIDC (discovery, token exchange, JWKS)
                      Apple / Google / Mozilla / Microsoft push services ◄── encrypted Web Push (reminders)
@@ -48,14 +48,14 @@ The container runs as UID 568 with a read-only root filesystem, no Linux capabil
 
 ## 3. Reverse proxy
 
-Terminate TLS at your proxy and forward to `http://<nas-ip>:30480`. Don't forward the port from the internet directly.
+Terminate TLS at your proxy and forward to `http://<nas-ip>:30504`. Don't forward the port from the internet directly.
 
-- **Nginx Proxy Manager:** new proxy host `ebbwell.example.com` → `http://<nas-ip>:30480`. Enable *Force SSL*, *HTTP/2* and *HSTS*. No custom locations or forward-auth needed.
-- **Traefik:** a router for `Host(\`ebbwell.example.com\`)` with TLS, pointing at the service on port 8080 (or `<nas-ip>:30480`). No `forwardAuth` middleware.
+- **Nginx Proxy Manager:** new proxy host `ebbwell.example.com` → `http://<nas-ip>:30504`. Enable *Force SSL*, *HTTP/2* and *HSTS*. No custom locations or forward-auth needed.
+- **Traefik:** a router for `Host(\`ebbwell.example.com\`)` with TLS, pointing at the service on port 8080 (or `<nas-ip>:30504`). No `forwardAuth` middleware.
 - **Caddy:**
   ```
   ebbwell.example.com {
-      reverse_proxy <nas-ip>:30480
+      reverse_proxy <nas-ip>:30504
   }
   ```
 
