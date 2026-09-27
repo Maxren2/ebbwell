@@ -3,6 +3,7 @@ import type { Settings } from '../../../shared/schema.ts';
 import { api, type SessionInfo } from '../api.ts';
 import { useStore } from '../store.tsx';
 import { Seg, Switch, useToast } from '../ui.tsx';
+import { LockSection, NotificationsSection, SharingSection } from './SettingsExtra.tsx';
 
 const GOALS = { track: 'Track', conceive: 'Conceive', avoid: 'Avoid pregnancy' } as const;
 
@@ -19,6 +20,20 @@ const EVENTS: Record<string, string> = {
   'import-merge': 'Data imported (merge)',
   'import-replace': 'Data imported (replace)',
   'sessions-revoked': 'Sessions revoked',
+  'login-reauth': 'Signed in again (PIN reset allowed)',
+  'lock-enabled': 'App lock turned on',
+  'lock-disabled': 'App lock turned off',
+  'pin-changed': 'PIN changed',
+  'unlock-failed': 'Wrong PIN entered',
+  'lock-lockout': 'Signed out after wrong PINs',
+  'biometric-added': 'Biometric unlock added',
+  'biometric-removed': 'Biometric unlock removed',
+  'push-subscribed': 'Notifications enabled on a device',
+  'share-invite-created': 'Partner invite created',
+  'share-accepted': 'Partner invite accepted',
+  'share-started': 'Partner started viewing your cycle',
+  'share-updated': 'Sharing settings changed',
+  'share-ended': 'Sharing ended',
 };
 
 export function SettingsView() {
@@ -89,18 +104,27 @@ export function SettingsView() {
           </div>
         </section>
 
+        <NotificationsSection />
+        <LockSection />
+        <SharingSection />
         <DataSection />
         <SecuritySection />
 
         <section className="card stack">
           <h3>About</h3>
           <p className="small muted">
-            Lune estimates cycles from your own history and confirms ovulation from body signs (Sensiplan temperature and mucus rules). It is
+            Ebbwell estimates cycles from your own history and confirms ovulation from body signs (Sensiplan temperature and mucus rules). It is
             not a medical device and not a contraceptive. See a clinician for missed periods, very irregular cycles, heavy bleeding or pain.
           </p>
           <p className="small muted">
             Sources: Bull et al. 2019 (npj Digital Medicine), Wilcox et al. 1995 (NEJM), Frank-Herrmann et al. 2007 (Human Reproduction), FIGO
             2018 menstrual definitions.
+          </p>
+          <p className="small muted">
+            Free software (AGPL-3.0-or-later).{' '}
+            <a href="https://github.com/Maxren2/ebbwell" target="_blank" rel="noopener noreferrer">
+              Source code
+            </a>
           </p>
         </section>
       </div>
@@ -144,15 +168,15 @@ function NfpAcknowledge() {
   }
   return (
     <div className="card tone-warn stack small">
-      <strong>Before relying on Lune to avoid pregnancy</strong>
+      <strong>Before relying on Ebbwell to avoid pregnancy</strong>
       <p>
         The symptothermal method (Sensiplan) is highly effective only with correct use: daily temperature at waking, daily mucus observation,
-        and the rules learned from a qualified teacher or the official book. Typical use is less effective than perfect use. Lune shows the
+        and the rules learned from a qualified teacher or the official book. Typical use is less effective than perfect use. Ebbwell shows the
         rule evaluation; mistakes in observations lead to mistakes in the result.
       </p>
       <label className="check">
         <input type="checkbox" onChange={(e) => e.target.checked && saveSettings({ nfpAcknowledged: true })} />
-        <span>I have learned the method and understand Lune is not a medical device.</span>
+        <span>I have learned the method and understand Ebbwell is not a medical device.</span>
       </label>
     </div>
   );
@@ -201,7 +225,7 @@ function DataSection() {
       />
       <input ref={fileRef} type="file" accept="application/json,.json" hidden onChange={(e) => e.target.files?.[0] && onFile(e.target.files[0])} />
       <button className="btn" onClick={() => fileRef.current?.click()}>
-        Import a Lune JSON export…
+        Import an Ebbwell JSON export…
       </button>
     </section>
   );

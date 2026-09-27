@@ -1,9 +1,10 @@
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { buildApp } from './app.ts';
+import { buildApp, defaultPush } from './app.ts';
 import { loadConfig } from './config.ts';
 import { Cipher } from './crypto.ts';
 import { Store } from './db.ts';
+import { runReminders } from './push.ts';
 
 const HOUR_MS = 3_600_000;
 
@@ -19,8 +20,9 @@ try {
 process.umask(0o077);
 mkdirSync(config.DATA_DIR, { recursive: true });
 const cipher = new Cipher(config.DATA_ENCRYPTION_KEY, config.DATA_ENCRYPTION_KEY_PREVIOUS);
-const store = new Store(join(config.DATA_DIR, 'lune.sqlite'), cipher);
-const app = await buildApp({ config, store, cipher });
+const store = new Store(join(config.DATA_DIR, 'ebbwell.sqlite'), cipher);
+const push = defaultPush(store, config);
+const app = await buildApp({ config, store, cipher, push });
 
 if (config.DATA_ENCRYPTION_KEY_PREVIOUS) {
   const n = store.rotateKeys();
@@ -42,9 +44,25 @@ const maintenance = () => {
 maintenance();
 const timer = setInterval(maintenance, HOUR_MS);
 
+// Reminders: checked every minute; each one is sent at most once.
+let remindersRunning = false;
+const reminders = setInterval(async () => {
+  if (remindersRunning) return;
+  remindersRunning = true;
+  try {
+    const n = await runReminders(store, push.send);
+    if (n) app.log.info(`Sent ${n} reminder(s)`);
+  } catch (err) {
+    app.log.error({ err }, 'Reminders failed');
+  } finally {
+    remindersRunning = false;
+  }
+}, 60_000);
+
 const shutdown = async (signal: string) => {
   app.log.info(`${signal} received, shutting down`);
   clearInterval(timer);
+  clearInterval(reminders);
   await app.close();
   store.close();
   process.exit(0);

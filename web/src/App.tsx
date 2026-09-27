@@ -9,6 +9,8 @@ import { DayEditor } from './views/DayEditor.tsx';
 import { ChartView } from './views/Chart.tsx';
 import { Insights } from './views/Insights.tsx';
 import { SettingsView } from './views/Settings.tsx';
+import { LockScreen } from './views/LockScreen.tsx';
+import { InviteAccept, PartnerPage } from './views/Partner.tsx';
 
 const TABS: { path: string; label: string; icon: IconName }[] = [
   { path: '/', label: 'Today', icon: 'today' },
@@ -39,7 +41,7 @@ function Splash({ error }: { error: string | null }) {
       <img src="/icon-192.png" alt="" />
       {error === 'offline' ? (
         <>
-          <p>Can't reach your Lune server. Your data is never stored on this device, so a connection is needed.</p>
+          <p>Can't reach your Ebbwell server. Your data is never stored on this device, so a connection is needed.</p>
           <button className="btn" onClick={() => location.reload()}>
             Retry
           </button>
@@ -62,6 +64,9 @@ function Routes() {
   const path = usePath();
   const dayMatch = /^\/day\/(\d{4}-\d{2}-\d{2})$/.exec(path);
   if (dayMatch && isIsoDate(dayMatch[1]!)) return <DayEditor date={dayMatch[1]!} />;
+  const partnerMatch = /^\/partner\/([0-9a-f-]{36})$/.exec(path);
+  if (partnerMatch) return <PartnerPage id={partnerMatch[1]!} />;
+  if (path === '/invite') return <InviteAccept />;
   switch (path) {
     case '/calendar':
       return <CalendarView />;
@@ -79,11 +84,11 @@ function Routes() {
 export function App() {
   const path = usePath();
   const online = useOnline();
-  const active = TABS.find((t) => t.path !== '/' && path.startsWith(t.path))?.path ?? (path.startsWith('/day/') ? '' : '/');
+  const active = TABS.find((t) => t.path !== '/' && path.startsWith(t.path))?.path ?? (/^\/(day|partner|invite)/.test(path) ? '' : '/');
 
   return (
     <ToastProvider>
-      <StoreProvider fallback={(error) => <Splash error={error} />}>
+      <StoreProvider fallback={(error) => <Splash error={error} />} lockScreen={(onUnlocked) => <LockScreen onUnlocked={onUnlocked} />}>
         <div className="app">
           {!online && <div className="banner">Offline — changes can't be saved until you reconnect.</div>}
           <Routes />

@@ -1,47 +1,90 @@
-# Lune
+<p align="center"><img src="web/public/icon-192.png" width="96" alt=""></p>
 
-A private, self-hosted period tracker and ovulation estimator. It runs as a web app you can install on iPhone and Android, is hosted on your own TrueNAS, and uses Authentik for login.
+# Ebbwell
 
-- **Reliable by design.** Lune learns from the user's own cycles and reports ranges and confidence instead of a single "day 14". It confirms ovulation with the Sensiplan temperature rule (both exceptions included), the cervical-mucus peak day and LH tests. It flags irregular cycles using FIGO 2018 thresholds and detects late periods. See [docs/PROPOSAL.md](docs/PROPOSAL.md) for the research behind each feature.
-- **Private.** Every health record is encrypted with AES-256-GCM in the database. Login uses OIDC with PKCE against Authentik. The CSP is strict, and the app makes zero third-party requests. The service worker caches only the app shell, never health data. Users get full export and one-click deletion.
-- **Simple to run.** One container on Node 24 using its built-in SQLite, with no native modules. The server needs no build step and writes one data directory with daily backups.
+A private, self-hosted period tracker and ovulation estimator. It runs as a web app you can install on iPhone, Android and desktop, and you host it yourself (Docker / TrueNAS SCALE) behind your own OpenID Connect login (Authentik, Authelia, Keycloak, Pocket ID…).
 
-> Lune is a journal, **not a medical device and not a contraceptive**. The Sensiplan evaluation is opt-in and meant for people who have learned the method.
+<p align="center">
+  <img src="docs/screenshots/today.png" width="200" alt="Today">
+  <img src="docs/screenshots/calendar.png" width="200" alt="Calendar">
+  <img src="docs/screenshots/chart.png" width="200" alt="Symptothermal chart">
+  <img src="docs/screenshots/partner.png" width="200" alt="Partner view">
+</p>
 
-## Screens
+## Why
 
-| Today | Calendar | Chart | Insights | Settings |
-|---|---|---|---|---|
-| Cycle ring, next period ± range, ovulation status, alerts | Logged / predicted period, fertile window, ovulation (confirmed vs estimated) | Temperature curve, cover line, higher readings, mucus / bleeding / LH rows | Cycle statistics, regularity, per-cycle ovulation & luteal length, exclude cycle | Goal, tracking options, units, export/import, devices, delete all |
+Calendar-only period apps predict the ovulation day correctly only about 8–21% of the time. They also have a record of sharing intimate data with third parties. Ebbwell does it differently. See **[docs/PROPOSAL.md](docs/PROPOSAL.md)** for the research behind each feature.
+
+- **Learns your cycle.** Personal statistics replace the textbook "day 14". Every prediction comes with a range and a confidence level, and irregular cycles are flagged using FIGO 2018 thresholds.
+- **Confirms ovulation with body signs.** It applies the Sensiplan temperature rule (both exceptions), the cervical-mucus peak day and the double check, and uses LH tests. Once ovulation is confirmed, the next period is predicted from your own luteal phase.
+- **Private by design.**
+  - Everything is encrypted at rest (AES-256-GCM, bound to each row).
+  - The app makes zero third-party requests and has a strict CSP.
+  - The service worker never caches health data.
+  - Users get full export and one-tap deletion.
+
+## Features
+
+| | |
+|---|---|
+| Daily log | Bleeding, basal temperature (time, disturbances, exclusion), cervical mucus (Sensiplan categories), cervix, LH and pregnancy tests, sex, symptoms, mood, notes |
+| Insights | Cycle and period length, variation, luteal phase, per-cycle ovulation method, exclude unusual cycles, pregnancy/pause mode |
+| Predictions | Next 3 periods, fertile window, ovulation with ranges and confidence; late-period detection with a pregnancy-test hint |
+| Sensiplan evaluation | Opt-in for people who learned the method: 5-day / minus-8 rules, post-ovulatory double check |
+| Reminders | Web Push: morning temperature, evening check-in, period coming, fertile window, partner's period. Discreet wording by default |
+| App lock | Server-enforced PIN, Face ID / Touch ID / fingerprint (WebAuthn), auto-lock, lockout after 5 wrong PINs, PIN reset only after a fresh identity-provider login |
+| Partner sharing | Single-use invite link; read-only view with owner-chosen scopes (fertility, history, symptoms & mood). Notes and intimate details are never shared |
+| Security | OIDC + PKCE, hashed server-side sessions, device list, CSRF protection, rate limiting, audit log, key rotation, daily encrypted backups |
+| Platforms | Installable PWA (iOS 16.4+, Android, desktop), light/dark, offline app shell |
+
+> Ebbwell is a journal, **not a medical device and not a contraceptive**.
 
 ## Deploy
 
-See **[docs/DEPLOY.md](docs/DEPLOY.md)** for Authentik, TrueNAS "Install via YAML", reverse proxy, phone installation, backups and key rotation.
+```bash
+docker run -d --name ebbwell -p 8080:8080 -v ebbwell-data:/data \
+  -e APP_URL=https://ebbwell.example.com \
+  -e OIDC_ISSUER=https://auth.example.com/application/o/ebbwell/ \
+  -e OIDC_CLIENT_ID=... -e OIDC_CLIENT_SECRET=... \
+  -e DATA_ENCRYPTION_KEY="$(openssl rand -base64 32)" \
+  ghcr.io/maxren2/ebbwell:0.2.0
+```
+
+Keep a copy of `DATA_ENCRYPTION_KEY`: without it the data can't be decrypted.
+
+**[docs/DEPLOY.md](docs/DEPLOY.md)** covers:
+
+- the Authentik provider;
+- TrueNAS "Install via YAML" ([deploy/truenas-compose.yaml](deploy/truenas-compose.yaml));
+- the reverse proxy;
+- phone installation, reminders, the app lock and partner sharing;
+- backups and key rotation.
+
+All settings are listed in [.env.example](.env.example).
 
 ## Develop
 
 ```bash
 npm ci
-cp .env.example .env.dev    # then set AUTH_MODE=dev, ALLOW_INSECURE_DEV_AUTH=true, APP_URL=http://localhost:8080, DATA_DIR=.data and a key
+cp .env.example .env.dev    # set AUTH_MODE=dev, ALLOW_INSECURE_DEV_AUTH=true, APP_URL=http://localhost:8080, DATA_DIR=.data and a key
 npm run build               # builds the PWA into dist/
-node --env-file=.env.dev scripts/seed-demo.ts   # optional: 7 demo cycles
+node --env-file=.env.dev scripts/seed-demo.ts   # optional: demo cycles + a shared partner cycle
 node --env-file=.env.dev server/index.ts        # http://localhost:8080/auth/login
-```
-
-`npm run dev:web` runs Vite with hot reload on :5173, proxying `/api` and `/auth` to :8080. The service worker is only active in the built app.
-
-```bash
-npm test          # engine rules, API security, encryption, OIDC flow against a mock provider
+npm test                    # engine rules, API security, lock, push, sharing, OIDC flow against a mock provider
 npm run typecheck
 ```
 
-## Layout
+The server is TypeScript run directly by Node 24 (type stripping), with no build step and no native modules. SQLite comes from `node:sqlite`.
 
 ```
-shared/   cycle engine (pure TS, runs in the browser) + zod schemas
-server/   Fastify API, OIDC, sessions, encrypted SQLite store, backups
-web/      React PWA
+shared/   cycle engine and partner view (pure TS, shared by browser and server) + zod schemas
+server/   Fastify API: OIDC, sessions, app lock, Web Push, sharing, encrypted SQLite store, backups
+web/      React PWA + service worker
 test/     vitest suites
 deploy/   TrueNAS compose file
-docs/     proposal & deployment guide
+docs/     proposal and deployment guide
 ```
+
+## License
+
+[AGPL-3.0-or-later](LICENSE). If you run a modified Ebbwell for other people, you must offer them its source code.

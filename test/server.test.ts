@@ -11,14 +11,14 @@ import { Cipher } from '../server/crypto.ts';
 import { Store } from '../server/db.ts';
 
 const KEY = randomBytes(32).toString('base64');
-const APP_URL = 'http://lune.test';
+const APP_URL = 'http://ebbwell.test';
 
 let dir: string;
 let store: Store;
 let app: FastifyInstance;
 
 async function setup(env: Record<string, string>) {
-  dir = mkdtempSync(join(tmpdir(), 'lune-'));
+  dir = mkdtempSync(join(tmpdir(), 'ebbwell-'));
   const config = loadConfig({
     APP_URL,
     DATA_DIR: dir,
@@ -28,7 +28,7 @@ async function setup(env: Record<string, string>) {
     ...env,
   });
   const cipher = new Cipher(config.DATA_ENCRYPTION_KEY, config.DATA_ENCRYPTION_KEY_PREVIOUS);
-  store = new Store(join(dir, 'lune.sqlite'), cipher);
+  store = new Store(join(dir, 'ebbwell.sqlite'), cipher);
   app = await buildApp({ config, store, cipher });
 }
 
@@ -40,8 +40,8 @@ async function teardown() {
 
 const cookieOf = (res: LightMyRequestResponse, name: string) => res.cookies.find((c) => c.name === name)?.value;
 
-const write = { 'x-lune-csrf': '1', origin: APP_URL, 'content-type': 'application/json' };
-const csrf = { 'x-lune-csrf': '1', origin: APP_URL };
+const write = { 'x-ebbwell-csrf': '1', origin: APP_URL, 'content-type': 'application/json' };
+const csrf = { 'x-ebbwell-csrf': '1', origin: APP_URL };
 
 // ---------------------------------------------------------------- dev auth
 
@@ -52,11 +52,11 @@ describe('API (dev auth)', () => {
   async function login(ua = 'test-agent') {
     const res = await app.inject({ method: 'GET', url: '/auth/login', headers: { 'user-agent': ua } });
     expect(res.statusCode).toBe(302);
-    const token = cookieOf(res, '__Host-lune_session')!;
+    const token = cookieOf(res, '__Host-ebbwell_session')!;
     expect(token).toBeTruthy();
-    const c = res.cookies.find((x) => x.name === '__Host-lune_session')!;
+    const c = res.cookies.find((x) => x.name === '__Host-ebbwell_session')!;
     expect(c).toMatchObject({ httpOnly: true, secure: true, sameSite: 'Lax', path: '/' });
-    return { cookie: `__Host-lune_session=${token}` };
+    return { cookie: `__Host-ebbwell_session=${token}` };
   }
 
   it('rejects unauthenticated API calls', async () => {
@@ -86,7 +86,7 @@ describe('API (dev auth)', () => {
 
     // Nothing sensitive is readable in the database file.
     store.db.exec('PRAGMA wal_checkpoint(TRUNCATE)');
-    const raw = readFileSync(join(dir, 'lune.sqlite')).toString('latin1');
+    const raw = readFileSync(join(dir, 'ebbwell.sqlite')).toString('latin1');
     expect(raw).not.toContain('SECRET-NOTE');
     expect(raw).not.toContain('heavy');
     expect(raw).not.toContain('Dev user');
@@ -150,7 +150,7 @@ describe('API (dev auth)', () => {
     const json = await app.inject({ method: 'GET', url: '/api/export', headers: auth });
     expect(json.headers['content-disposition']).toMatch(/attachment/);
     const exported = json.json();
-    expect(exported).toMatchObject({ app: 'lune', version: 1, days: [{ date: '2026-05-01' }] });
+    expect(exported).toMatchObject({ app: 'ebbwell', version: 1, days: [{ date: '2026-05-01' }] });
 
     const csv = await app.inject({ method: 'GET', url: '/api/export?format=csv', headers: auth });
     expect(csv.body).toContain(`2026-05-01,light`);
@@ -205,7 +205,7 @@ describe('API (dev auth)', () => {
 
 describe('storage', () => {
   it('rotates encryption keys', () => {
-    const d = mkdtempSync(join(tmpdir(), 'lune-'));
+    const d = mkdtempSync(join(tmpdir(), 'ebbwell-'));
     const oldKey = randomBytes(32);
     const newKey = randomBytes(32);
     const s1 = new Store(join(d, 'db.sqlite'), new Cipher(oldKey));
@@ -224,7 +224,7 @@ describe('storage', () => {
   });
 
   it('refuses ciphertext moved to another row or user', () => {
-    const d = mkdtempSync(join(tmpdir(), 'lune-'));
+    const d = mkdtempSync(join(tmpdir(), 'ebbwell-'));
     const s = new Store(join(d, 'db.sqlite'), new Cipher(randomBytes(32)));
     const alice = s.upsertUser('a', 'Alice');
     const bob = s.upsertUser('b', 'Bob');
@@ -242,7 +242,8 @@ describe('storage', () => {
 
 describe('OIDC login (mock Authentik)', () => {
   const oidcServer = new OAuth2Server();
-  let groups: string[] = ['lune-users'];
+  let groups: string[] = ['ebbwell-users'];
+  let authTime = () => Math.floor(Date.now() / 1000);
 
   beforeAll(async () => {
     await oidcServer.issuer.keys.generate('RS256');
@@ -250,6 +251,7 @@ describe('OIDC login (mock Authentik)', () => {
     oidcServer.service.on('beforeTokenSigning', (token) => {
       token.payload.groups = groups;
       token.payload.name = 'Alice';
+      token.payload.auth_time = authTime();
     });
   });
   afterAll(() => oidcServer.stop());
@@ -257,21 +259,21 @@ describe('OIDC login (mock Authentik)', () => {
   beforeEach(() =>
     setup({
       OIDC_ISSUER: oidcServer.issuer.url!,
-      OIDC_CLIENT_ID: 'lune',
+      OIDC_CLIENT_ID: 'ebbwell',
       OIDC_CLIENT_SECRET: 'secret',
       OIDC_ALLOW_HTTP: 'true',
-      OIDC_ALLOWED_GROUPS: 'lune-users',
+      OIDC_ALLOWED_GROUPS: 'ebbwell-users',
     }),
   );
   afterEach(teardown);
 
-  async function runFlow(tamper?: (callback: URL) => void) {
-    const login = await app.inject({ method: 'GET', url: '/auth/login' });
+  async function runFlow(tamper?: (callback: URL) => void, loginUrl = '/auth/login') {
+    const login = await app.inject({ method: 'GET', url: loginUrl });
     expect(login.statusCode).toBe(302);
     const authorize = new URL(login.headers.location as string);
     expect(authorize.searchParams.get('code_challenge_method')).toBe('S256');
     expect(authorize.searchParams.get('redirect_uri')).toBe(`${APP_URL}/auth/callback`);
-    const flow = cookieOf(login, '__Host-lune_flow')!;
+    const flow = cookieOf(login, '__Host-ebbwell_flow')!;
 
     const idp = await fetch(authorize, { redirect: 'manual' });
     const callback = new URL(idp.headers.get('location')!);
@@ -279,30 +281,63 @@ describe('OIDC login (mock Authentik)', () => {
     return app.inject({
       method: 'GET',
       url: callback.pathname + callback.search,
-      headers: { cookie: `__Host-lune_flow=${flow}` },
+      headers: { cookie: `__Host-ebbwell_flow=${flow}` },
     });
   }
 
   it('logs in through the authorization code + PKCE flow', async () => {
-    groups = ['lune-users'];
+    groups = ['ebbwell-users'];
     const res = await runFlow();
     expect(res.statusCode).toBe(302);
-    const token = cookieOf(res, '__Host-lune_session')!;
-    const me = await app.inject({ method: 'GET', url: '/api/me', headers: { cookie: `__Host-lune_session=${token}` } });
+    const token = cookieOf(res, '__Host-ebbwell_session')!;
+    const me = await app.inject({ method: 'GET', url: '/api/me', headers: { cookie: `__Host-ebbwell_session=${token}` } });
     expect(me.json()).toMatchObject({ name: 'Alice', authMode: 'oidc' });
   });
 
   it('rejects a tampered state', async () => {
     const res = await runFlow((u) => u.searchParams.set('state', 'forged'));
     expect(res.statusCode).toBe(400);
-    expect(cookieOf(res, '__Host-lune_session')).toBeUndefined();
+    expect(cookieOf(res, '__Host-ebbwell_session')).toBeUndefined();
   });
 
   it('rejects users outside the allowed groups', async () => {
     groups = ['other'];
     const res = await runFlow();
     expect(res.statusCode).toBe(403);
-    expect(cookieOf(res, '__Host-lune_session')).toBeUndefined();
+    expect(cookieOf(res, '__Host-ebbwell_session')).toBeUndefined();
+  });
+
+  it('starts locked sessions when a PIN is set; only a fresh re-authentication unlocks and allows a reset', async () => {
+    groups = ['ebbwell-users'];
+    const sessionOf = (res: LightMyRequestResponse) => ({ cookie: `__Host-ebbwell_session=${cookieOf(res, '__Host-ebbwell_session')}` });
+    const first = sessionOf(await runFlow());
+    const set = await app.inject({
+      method: 'PUT',
+      url: '/api/lock',
+      headers: { ...first, 'x-ebbwell-csrf': '1', origin: APP_URL, 'content-type': 'application/json' },
+      payload: { pin: '482915' },
+    });
+    expect(set.statusCode).toBe(200);
+
+    // A normal SSO login (e.g. someone picking up the phone) lands locked.
+    const second = sessionOf(await runFlow());
+    expect((await app.inject({ method: 'GET', url: '/api/days', headers: second })).statusCode).toBe(423);
+
+    // "Forgot PIN": prompt=login + max_age=0, and auth_time must be recent.
+    const login = await app.inject({ method: 'GET', url: '/auth/login?reauth=1' });
+    const authorize = new URL(login.headers.location as string);
+    expect(authorize.searchParams.get('prompt')).toBe('login');
+    expect(authorize.searchParams.get('max_age')).toBe('0');
+
+    authTime = () => Math.floor(Date.now() / 1000) - 3600; // provider reused an old login
+    const stale = sessionOf(await runFlow(undefined, '/auth/login?reauth=1'));
+    expect((await app.inject({ method: 'GET', url: '/api/days', headers: stale })).statusCode).toBe(423);
+
+    authTime = () => Math.floor(Date.now() / 1000);
+    const freshRes = await runFlow(undefined, '/auth/login?reauth=1');
+    expect(freshRes.headers.location).toBe('/settings#lock');
+    const fresh = sessionOf(freshRes);
+    expect((await app.inject({ method: 'GET', url: '/api/lock', headers: fresh })).json()).toMatchObject({ locked: false, canReset: true });
   });
 
   it('rejects a callback without the flow cookie', async () => {

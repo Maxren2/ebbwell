@@ -24,8 +24,8 @@ export default defineConfig({
       includeAssets: ['favicon.svg', 'apple-touch-icon.png', 'auth.css', 'signed-out.html'],
       manifest: {
         id: '/',
-        name: 'Lune',
-        short_name: 'Lune',
+        name: 'Ebbwell',
+        short_name: 'Ebbwell',
         description: 'A private journal',
         start_url: '/',
         scope: '/',
@@ -39,13 +39,13 @@ export default defineConfig({
           { src: '/icon-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ],
       },
-      workbox: {
-        // Only the app shell is cached on the device; health data is never cached.
+      // Custom service worker (push notifications); only the app shell is precached,
+      // health data is never cached on the device.
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.ts',
+      injectManifest: {
         globPatterns: ['**/*.{js,css,html,svg,png,webmanifest}'],
-        navigateFallback: '/index.html',
-        navigateFallbackDenylist: [/^\/api\//, /^\/auth\//, /^\/healthz/, /^\/signed-out\.html/],
-        runtimeCaching: [],
-        cleanupOutdatedCaches: true,
       },
     }),
   ],

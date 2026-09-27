@@ -1,8 +1,8 @@
-# Lune — proposal
+# Ebbwell — proposal
 
 A self-hosted period tracker and ovulation estimator for TrueNAS SCALE. It runs as a web app that can be installed on iPhone and Android (PWA), behind Authentik and a reverse proxy.
 
-The name and icon are deliberately neutral ("Lune", a moon). The home-screen icon does not say "period tracker".
+The name and icon are deliberately neutral: "Ebbwell" (the ebb of the moon-driven tide, and well-being) with a crescent-moon icon, so the home-screen icon does not say "period tracker".
 
 ---
 
@@ -22,7 +22,7 @@ The name and icon are deliberately neutral ("Lune", a moon). The home-screen ico
 
 **Bottom line.** A tracker is reliable when it (1) personalises from the user's own history, (2) confirms ovulation with body signs (temperature, mucus, optionally LH), (3) shows how uncertain every prediction is, and (4) is honest about when data is insufficient or irregular.
 
-> Lune is **not a medical device and not a contraceptive**. The Sensiplan evaluation is provided for people who have *learned* the method (course or official book). It is hidden until the user explicitly enables it.
+> Ebbwell is **not a medical device and not a contraceptive**. The Sensiplan evaluation is provided for people who have *learned* the method (course or official book). It is hidden until the user explicitly enables it.
 
 ---
 
@@ -61,14 +61,28 @@ The name and icon are deliberately neutral ("Lune", a moon). The home-screen ico
 
 - Installable PWA (iOS "Add to Home Screen", Android install prompt, desktop). Offline app shell, safe-area support, dark mode.
 - The login flow uses full-page redirects, never pop-ups. Pop-ups break in iOS standalone mode.
-- One Docker image (Node 24, no native dependencies). TrueNAS "Install via YAML" compose file. GitHub Actions workflow that builds the image to a private GHCR package.
+- One Docker image (Node 24, no native dependencies). TrueNAS "Install via YAML" compose file. GitHub Actions workflow that publishes the image to GHCR.
 
-### D. Recommended next (Phase 2)
+### D. Phase 2 — built
 
-- **Reminders via Web Push**: morning temperature reminder, period expected, fertile window. iOS supports this for home-screen apps since 16.4. Notification text would stay generic ("Lune reminder") because payloads pass through Apple and Google push servers.
-- **App lock** (PIN or passkey via WebAuthn) on top of Authentik, for shared devices.
-- **Partner sharing**: read-only view for another Authentik user.
+- **Reminders via Web Push** (iOS 16.4+ home-screen apps, Android, desktop):
+  - Kinds: morning temperature (skipped if already logged), evening check-in, period coming (0–7 days before), fertile window starting, partner's period coming.
+  - Sent in the user's local time zone, each one only once, with a 3-hour catch-up window after downtime.
+  - Payloads are end-to-end encrypted (RFC 8291), so Apple, Google and Microsoft push servers can't read them. Discreet wording is on by default because the lock screen is visible to anyone.
+- **App lock**, enforced by the server per session:
+  - A PIN (scrypt-hashed) plus Face ID, Touch ID or fingerprint through WebAuthn platform authenticators, with user verification required.
+  - Locks on leaving the app or after 1–60 minutes of inactivity. New sign-ins start locked, and five wrong attempts destroy the session.
+  - A forgotten PIN can only be reset after a *fresh* identity-provider login (`prompt=login`, `auth_time` < 5 min), so a lingering SSO cookie is not enough.
+- **Partner sharing**:
+  - The owner creates a single-use invite link, valid 7 days and stored hashed. The code sits in the URL fragment, so it never appears in server logs.
+  - The partner (another user of the instance) gets a read-only view computed on the server. It contains period predictions plus the scopes the owner chose: fertility, history, symptoms & mood.
+  - Notes, sex, pregnancy tests and cervix observations are never shared. Either side can end the share.
+
+### E. Recommended next (Phase 3)
+
+- **Local accounts** (password + TOTP), for installations without an OIDC provider. This matters for a public app catalog.
 - **Import from other apps** (Clue, drip, Flo CSV exports).
+- Translations (French, German…).
 - **Offline logging queue**, stored encrypted on the device and synced later. This is a trade-off: it puts health data on the device.
 - Doctor-ready PDF summary of the last 6–12 cycles.
 - Extra wearables: temperature from Oura / Tempdrop exports.
@@ -78,7 +92,7 @@ The name and icon are deliberately neutral ("Lune", a moon). The home-screen ico
 ## 3. Architecture
 
 ```
-Phone / browser ──TLS──► Reverse proxy ──► Lune container (:8080) ──► /data (SQLite, backups)
+Phone / browser ──TLS──► Reverse proxy ──► Ebbwell container (:8080) ──► /data (SQLite, backups)
         │                                        │
         └────── OIDC redirect ─────► Authentik ◄─┘  (discovery, token exchange, JWKS)
 ```

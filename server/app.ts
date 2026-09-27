@@ -10,19 +10,42 @@ import { Sessions, endSessionUrl, registerAuth } from './auth.ts';
 import type { Config } from './config.ts';
 import type { Cipher } from './crypto.ts';
 import type { Store } from './db.ts';
+import { enforceLock, registerLockRoutes } from './lock.ts';
+import { registerPushRoutes, vapidKeys, webPushSender, type PushSender } from './push.ts';
+import { registerSharingRoutes } from './sharing.ts';
 
 export const EXPORT_VERSION = 1;
 
 const ImportSchema = z.object({
-  app: z.literal('lune'),
+  app: z.literal('ebbwell'),
   version: z.literal(EXPORT_VERSION),
   settings: SettingsSchema.optional(),
   days: z.array(z.object({ date: isoDate, data: DayDataSchema })).max(50_000),
   mode: z.enum(['merge', 'replace']).default('merge'),
 });
 
-export async function buildApp(deps: { config: Config; store: Store; cipher: Cipher }): Promise<FastifyInstance> {
+export interface AppDeps {
+  config: Config;
+  store: Store;
+  cipher: Cipher;
+  /** Injected in tests; defaults to real Web Push with the instance's VAPID keys. */
+  push?: { publicKey: string; send: PushSender };
+}
+
+/** Push services require an https: or mailto: contact. */
+export function vapidSubject(config: Config): string {
+  if (config.VAPID_SUBJECT) return config.VAPID_SUBJECT;
+  return config.APP_URL.startsWith('https://') ? config.APP_URL : 'mailto:ebbwell@localhost';
+}
+
+export function defaultPush(store: Store, config: Config): { publicKey: string; send: PushSender } {
+  const keys = vapidKeys(store, config);
+  return { publicKey: keys.publicKey, send: webPushSender(keys, vapidSubject(config)) };
+}
+
+export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   const { config, store } = deps;
+  const push = deps.push ?? defaultPush(store, config);
   const appOrigin = new URL(config.APP_URL).origin;
 
   const app = Fastify({
@@ -82,13 +105,15 @@ export async function buildApp(deps: { config: Config; store: Store; cipher: Cip
     if (request.method !== 'GET' && request.method !== 'HEAD') {
       const origin = request.headers.origin;
       const site = request.headers['sec-fetch-site'];
-      if ((origin && origin !== appOrigin) || (site && site !== 'same-origin') || request.headers['x-lune-csrf'] !== '1') {
+      if ((origin && origin !== appOrigin) || (site && site !== 'same-origin') || request.headers['x-ebbwell-csrf'] !== '1') {
         return reply.code(403).send({ error: 'forbidden' });
       }
     }
     if (!sessions.resolve(request, reply)) {
       return reply.code(401).send({ error: 'unauthenticated' });
     }
+    // App lock (PIN / biometrics): locked sessions only reach the unlock endpoints.
+    if (!enforceLock(store, request, reply)) return reply;
   });
 
   app.get('/healthz', { config: { rateLimit: false } }, async () => 'ok');
@@ -132,11 +157,11 @@ export async function buildApp(deps: { config: Config; store: Store; cipher: Cip
     store.audit(userId, 'export');
     const stamp = new Date().toISOString().slice(0, 10);
     if (request.query.format === 'csv') {
-      reply.header('Content-Disposition', `attachment; filename="lune-${stamp}.csv"`);
+      reply.header('Content-Disposition', `attachment; filename="ebbwell-${stamp}.csv"`);
       return reply.type('text/csv; charset=utf-8').send(toCsv(days));
     }
-    reply.header('Content-Disposition', `attachment; filename="lune-${stamp}.json"`);
-    return { app: 'lune', version: EXPORT_VERSION, exportedAt: new Date().toISOString(), settings: store.getSettings(userId), days };
+    reply.header('Content-Disposition', `attachment; filename="ebbwell-${stamp}.json"`);
+    return { app: 'ebbwell', version: EXPORT_VERSION, exportedAt: new Date().toISOString(), settings: store.getSettings(userId), days };
   });
 
   app.post('/api/import', { bodyLimit: 20 * 1024 * 1024 }, async (request, reply) => {
@@ -176,6 +201,13 @@ export async function buildApp(deps: { config: Config; store: Store; cipher: Cip
   });
 
   app.get('/api/audit', async (request) => store.listAudit(uid(request)));
+
+  /** Keeps the unlock window open while the user is active without other API calls. */
+  app.post('/api/ping', async (_request, reply) => reply.code(204).send());
+
+  registerLockRoutes(app, { config, store, sessions });
+  registerPushRoutes(app, { store, publicKey: push.publicKey, send: push.send });
+  registerSharingRoutes(app, { config, store });
 
   app.delete('/api/account', async (request, reply) => {
     const body = z.object({ confirm: z.literal('DELETE') }).safeParse(request.body);

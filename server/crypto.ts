@@ -53,7 +53,7 @@ export class Cipher {
 }
 
 function keyId(key: Buffer): string {
-  return createHash('sha256').update('lune-key-id').update(key).digest('hex').slice(0, 8);
+  return createHash('sha256').update('ebbwell-key-id').update(key).digest('hex').slice(0, 8);
 }
 
 export function sha256(value: string): string {

@@ -5,6 +5,7 @@ import { navigate } from '../router.ts';
 import { useStore } from '../store.tsx';
 import { CONFIDENCE, METHOD, WARNINGS, fmtDate, fmtLong, fmtRange, fmtTemp, relDays } from '../format.ts';
 import { Icon, useToast } from '../ui.tsx';
+import { PartnerCards } from './Partner.tsx';
 
 export function Today() {
   const { analysis, today, days, me, settings } = useStore();
@@ -20,6 +21,7 @@ export function Today() {
       </header>
 
       <div className="stack">
+        <PartnerCards />
         {analysis.cycles.length === 0 ? (
           <Welcome />
         ) : settings.paused ? (
@@ -50,7 +52,7 @@ export function Today() {
           ))}
 
         <p className="hint center">
-          Lune is a journal, not a medical device or contraceptive. Predictions are estimates.
+          Ebbwell is a journal, not a medical device or contraceptive. Predictions are estimates.
         </p>
       </div>
     </>
@@ -324,7 +326,7 @@ function Welcome() {
   return (
     <div className="card stack">
       <div>
-        <h2>Welcome to Lune</h2>
+        <h2>Welcome to Ebbwell</h2>
         <p className="muted small">
           Your data stays on your own server, encrypted. Start with the first day of your last period — predictions improve with every cycle
           you log.

@@ -1,10 +1,10 @@
 # TrueNAS SCALE (24.10+): Apps → Discover Apps → ⋮ → Install via YAML → paste this file.
 # Replace every CHANGE_ME. See docs/DEPLOY.md for the Authentik and reverse-proxy setup.
-name: lune
+name: ebbwell
 
 services:
-  lune:
-    image: ghcr.io/maxren2/lune:latest
+  ebbwell:
+    image: ghcr.io/maxren2/ebbwell:0.2.0
     restart: unless-stopped
     user: "568:568"            # TrueNAS "apps" user; must own the dataset below
     read_only: true
@@ -18,12 +18,12 @@ services:
       # (or put the proxy on the same Docker network and remove `ports` entirely).
       - "30480:8080"
     environment:
-      APP_URL: "https://lune.CHANGE_ME.example"
+      APP_URL: "https://ebbwell.CHANGE_ME.example"
       # Authentik → Applications → Providers → OAuth2/OpenID (see docs/DEPLOY.md)
-      OIDC_ISSUER: "https://auth.CHANGE_ME.example/application/o/lune/"
+      OIDC_ISSUER: "https://auth.CHANGE_ME.example/application/o/ebbwell/"
       OIDC_CLIENT_ID: "CHANGE_ME"
       OIDC_CLIENT_SECRET: "CHANGE_ME"
-      OIDC_ALLOWED_GROUPS: "lune-users"
+      OIDC_ALLOWED_GROUPS: "ebbwell-users"
       # 32 random bytes, base64: `openssl rand -base64 32`. Losing it = losing the data. Back it up offline.
       DATA_ENCRYPTION_KEY: "CHANGE_ME"
       # IP ranges of your reverse proxy, so rate limiting sees real client IPs.
@@ -34,8 +34,8 @@ services:
       BACKUP_RETENTION_DAYS: "14"
       TZ: "Europe/Paris"
     volumes:
-      # Use an (ideally encrypted) dataset, e.g. created as apps/lune with owner 568:568.
-      - /mnt/CHANGE_ME_POOL/apps/lune:/data
+      # Use an (ideally encrypted) dataset, e.g. created as apps/ebbwell with owner 568:568.
+      - /mnt/CHANGE_ME_POOL/apps/ebbwell:/data
     deploy:
       resources:
         limits:

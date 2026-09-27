@@ -14,7 +14,7 @@ const EnvSchema = z
     NODE_ENV: z.string().default('production'),
     HOST: z.string().default('0.0.0.0'),
     PORT: z.coerce.number().int().min(1).max(65535).default(8080),
-    /** Public URL of the app, as seen by browsers (e.g. https://lune.example.com). */
+    /** Public URL of the app, as seen by browsers (e.g. https://ebbwell.example.com). */
     APP_URL: z.url().transform((u) => u.replace(/\/+$/, '')),
     DATA_DIR: z.string().default('/data'),
     STATIC_DIR: z.string().default('dist'),
@@ -43,6 +43,11 @@ const EnvSchema = z
     TRUST_PROXY: z.string().default('loopback,uniquelocal'),
     HSTS: bool.default(false),
     BACKUP_RETENTION_DAYS: z.coerce.number().int().min(0).max(365).default(14),
+    /** Web Push keys; generated once and stored encrypted in the database when unset. */
+    VAPID_PUBLIC_KEY: z.string().optional(),
+    VAPID_PRIVATE_KEY: z.string().optional(),
+    /** Contact for push services (mailto: or https:); defaults to APP_URL. */
+    VAPID_SUBJECT: z.string().regex(/^(mailto:|https:\/\/)/, 'must start with mailto: or https://').optional(),
     LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
   })
   .superRefine((env, ctx) => {

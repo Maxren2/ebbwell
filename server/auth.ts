@@ -2,18 +2,26 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import * as oidc from 'openid-client';
 import type { Config } from './config.ts';
 import { randomToken, sha256, type Cipher } from './crypto.ts';
-import type { Store, User } from './db.ts';
+import type { AppLock, SessionRow, Store, User } from './db.ts';
 
-export const SESSION_COOKIE = '__Host-lune_session';
-const FLOW_COOKIE = '__Host-lune_flow';
+export const SESSION_COOKIE = '__Host-ebbwell_session';
+const FLOW_COOKIE = '__Host-ebbwell_flow';
 const FLOW_TTL_MS = 10 * 60_000;
 const TOUCH_INTERVAL_MS = 5 * 60_000;
 const DAY_MS = 86_400_000;
+/** A fresh re-authentication (prompt=login) allows resetting a forgotten PIN for this long. */
+const RESET_WINDOW_MS = 10 * 60_000;
+/** Maximum age of auth_time for a re-authentication to count as fresh. */
+const FRESH_AUTH_SEC = 300;
+
+/** How long an unlock lasts without activity. "Lock when I leave" (0) keeps a 5-minute backstop. */
+export const lockWindowMs = (lock: AppLock) => (lock.timeoutSec > 0 ? lock.timeoutSec : 300) * 1000;
 
 declare module 'fastify' {
   interface FastifyRequest {
     user?: User;
     sessionId?: string;
+    session?: SessionRow;
   }
 }
 
@@ -22,6 +30,7 @@ interface Flow {
   state: string;
   nonce: string;
   exp: number;
+  reauth: boolean;
 }
 
 const cookieBase = { httpOnly: true, secure: true, sameSite: 'lax', path: '/' } as const;
@@ -35,11 +44,19 @@ export class Sessions {
     this.config = config;
   }
 
-  create(reply: FastifyReply, user: User, userAgent: string) {
+  /**
+   * New sessions of a user with an app lock start locked, unless the user just proved
+   * their identity again at the identity provider (fresh), which also allows a PIN reset.
+   */
+  create(reply: FastifyReply, user: User, userAgent: string, fresh = false) {
     const token = randomToken();
     const now = Date.now();
     const expiresAt = now + this.config.SESSION_MAX_DAYS * DAY_MS;
-    this.store.createSession(sha256(token), user.id, userAgent, expiresAt);
+    const lock = this.store.getLock(user.id);
+    this.store.createSession(sha256(token), user.id, userAgent, expiresAt, {
+      unlockedUntil: lock && fresh ? now + lockWindowMs(lock) : 0,
+      resetUntil: lock && fresh ? now + RESET_WINDOW_MS : 0,
+    });
     reply.setCookie(SESSION_COOKIE, token, { ...cookieBase, maxAge: this.config.SESSION_IDLE_DAYS * 86_400 });
   }
 
@@ -64,6 +81,7 @@ export class Sessions {
     }
     request.user = user;
     request.sessionId = id;
+    request.session = session;
     return true;
   }
 
@@ -76,7 +94,7 @@ export class Sessions {
 function page(title: string, message: string, action = '<a href="/auth/login">Try again</a>') {
   const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Lune</title><link rel="stylesheet" href="/auth.css"></head>
+<title>Ebbwell</title><link rel="stylesheet" href="/auth.css"></head>
 <body><main><h1>${esc(title)}</h1><p>${esc(message)}</p><p>${action}</p></main></body></html>`;
 }
 
@@ -87,9 +105,9 @@ export async function registerAuth(app: FastifyInstance, deps: { config: Config;
 
   if (config.AUTH_MODE === 'dev') {
     app.log.warn('AUTH_MODE=dev: anyone reaching this server is logged in as "Dev user". Never use this in production.');
-    app.get('/auth/login', authLimit, async (request, reply) => {
+    app.get<{ Querystring: { reauth?: string } }>('/auth/login', authLimit, async (request, reply) => {
       const user = store.upsertUser('dev-user', 'Dev user');
-      sessions.create(reply, user, request.headers['user-agent'] ?? '');
+      sessions.create(reply, user, request.headers['user-agent'] ?? '', request.query.reauth === '1');
       store.audit(user.id, 'login');
       return reply.redirect('/');
     });
@@ -113,7 +131,7 @@ export async function registerAuth(app: FastifyInstance, deps: { config: Config;
     };
     app.decorate('oidcConfig', getConfig);
 
-    app.get('/auth/login', authLimit, async (_request, reply) => {
+    app.get<{ Querystring: { reauth?: string } }>('/auth/login', authLimit, async (request, reply) => {
       let oidcConfig: oidc.Configuration;
       try {
         oidcConfig = await getConfig();
@@ -126,6 +144,7 @@ export async function registerAuth(app: FastifyInstance, deps: { config: Config;
         state: oidc.randomState(),
         nonce: oidc.randomNonce(),
         exp: Date.now() + FLOW_TTL_MS,
+        reauth: request.query.reauth === '1',
       };
       const url = oidc.buildAuthorizationUrl(oidcConfig, {
         redirect_uri: redirectUri,
@@ -134,6 +153,8 @@ export async function registerAuth(app: FastifyInstance, deps: { config: Config;
         code_challenge_method: 'S256',
         state: flow.state,
         nonce: flow.nonce,
+        // Re-authentication (forgotten PIN): force the identity provider to ask for credentials again.
+        ...(flow.reauth ? { prompt: 'login', max_age: '0' } : {}),
       });
       reply.setCookie(FLOW_COOKIE, cipher.encryptJson(flow, 'oidc-flow'), { ...cookieBase, maxAge: FLOW_TTL_MS / 1000 });
       return reply.redirect(url.href);
@@ -180,9 +201,11 @@ export async function registerAuth(app: FastifyInstance, deps: { config: Config;
 
       const name = String(claims.name ?? claims.preferred_username ?? claims.given_name ?? 'You').slice(0, 100);
       const user = store.upsertUser(`${claims.iss}|${claims.sub}`, name);
-      sessions.create(reply, user, request.headers['user-agent'] ?? '');
-      store.audit(user.id, 'login');
-      return reply.redirect('/');
+      const authTime = typeof claims.auth_time === 'number' ? claims.auth_time : 0;
+      const fresh = flow.reauth && Date.now() / 1000 - authTime <= FRESH_AUTH_SEC;
+      sessions.create(reply, user, request.headers['user-agent'] ?? '', fresh);
+      store.audit(user.id, fresh ? 'login-reauth' : 'login');
+      return reply.redirect(fresh ? '/settings#lock' : '/');
     });
   }
 

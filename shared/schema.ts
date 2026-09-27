@@ -66,6 +66,35 @@ export interface DayEntry {
   data: DayData;
 }
 
+export const hhmm = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Expected HH:MM');
+
+function isTimeZone(tz: string): boolean {
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: tz });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export const NotificationSettingsSchema = z
+  .object({
+    /** IANA time zone of the user's device; reminders are sent in local time. */
+    timezone: z.string().max(64).refine(isTimeZone, 'Unknown time zone').default('UTC'),
+    /** Generic wording on the lock screen ("A reminder from Ebbwell"). */
+    discreet: z.boolean().default(true),
+    /** Time of day for period / fertile-window / partner reminders. */
+    time: hhmm.default('09:00'),
+    temperature: z.object({ enabled: z.boolean().default(false), time: hhmm.default('06:30') }).strict().prefault({}),
+    log: z.object({ enabled: z.boolean().default(false), time: hhmm.default('21:00') }).strict().prefault({}),
+    period: z.object({ enabled: z.boolean().default(true), daysBefore: z.number().int().min(0).max(7).default(2) }).strict().prefault({}),
+    fertile: z.object({ enabled: z.boolean().default(false) }).strict().prefault({}),
+    partner: z.object({ enabled: z.boolean().default(true), daysBefore: z.number().int().min(0).max(7).default(2) }).strict().prefault({}),
+  })
+  .strict();
+
+export type NotificationSettings = z.infer<typeof NotificationSettingsSchema>;
+
 export const SettingsSchema = z
   .object({
     goal: z.enum(['track', 'conceive', 'avoid']).default('track'),
@@ -91,6 +120,7 @@ export const SettingsSchema = z
     excludedCycles: z.array(isoDate).max(1000).default([]),
     defaultCycleLength: z.number().int().min(18).max(60).default(28),
     defaultPeriodLength: z.number().int().min(1).max(12).default(5),
+    notifications: NotificationSettingsSchema.prefault({}),
   })
   .strict();
 
