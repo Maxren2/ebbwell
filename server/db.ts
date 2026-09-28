@@ -107,11 +107,42 @@ const MIGRATIONS: string[] = [
     expires_at INTEGER NOT NULL
   ) STRICT;
   `,
+  `
+  -- Local accounts and administration. Local users get oidc_sub = 'local|<id>'.
+  ALTER TABLE users ADD COLUMN username TEXT;
+  ALTER TABLE users ADD COLUMN password_hash TEXT;
+  ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE users ADD COLUMN disabled INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE users ADD COLUMN failed_logins INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE users ADD COLUMN locked_until INTEGER NOT NULL DEFAULT 0;
+  CREATE UNIQUE INDEX users_username ON users(username) WHERE username IS NOT NULL;
+  `,
 ];
+
+export type AccountKind = 'oidc' | 'local' | 'dev';
 
 export interface User {
   id: string;
   name: string;
+  kind: AccountKind;
+  username: string | null;
+  isAdmin: boolean;
+  disabled: boolean;
+  mustChangePassword: boolean;
+}
+
+export interface UserSummary extends User {
+  createdAt: number;
+  lastLoginAt: number;
+  lockedUntil: number;
+}
+
+export interface LocalCredentials {
+  user: User;
+  passwordHash: string;
+  failedLogins: number;
+  lockedUntil: number;
 }
 
 export interface SessionRow {
@@ -256,7 +287,23 @@ export class Store {
 
   // ------------------------------------------------------------ users
 
-  upsertUser(sub: string, name: string): User {
+  private toUser(row: Row): User {
+    const id = row.id as string;
+    const { name } = this.cipher.decryptJson<{ name: string }>(row.profile_enc as string, aad.profile(id));
+    const sub = row.oidc_sub as string;
+    return {
+      id,
+      name,
+      kind: sub.startsWith('local|') ? 'local' : sub === 'dev-user' ? 'dev' : 'oidc',
+      username: (row.username as string | null) ?? null,
+      isAdmin: row.is_admin === 1,
+      disabled: row.disabled === 1,
+      mustChangePassword: row.must_change_password === 1,
+    };
+  }
+
+  /** Creates or refreshes an identity-provider (or dev) user. `isAdmin` syncs the admin flag when given. */
+  upsertUser(sub: string, name: string, opts: { isAdmin?: boolean } = {}): User {
     const now = Date.now();
     const existing = this.db.prepare('SELECT id FROM users WHERE oidc_sub = ?').get(sub) as { id: string } | undefined;
     const id = existing?.id ?? randomUUID();
@@ -268,16 +315,89 @@ export class Store {
         .prepare('INSERT INTO users (id, oidc_sub, profile_enc, created_at, last_login_at) VALUES (?, ?, ?, ?, ?)')
         .run(id, sub, profile, now, now);
     }
-    return { id, name };
+    if (opts.isAdmin !== undefined) this.setAdmin(id, opts.isAdmin);
+    return this.getUser(id)!;
   }
 
   getUser(id: string): User | null {
-    const row = this.db.prepare('SELECT id, profile_enc FROM users WHERE id = ?').get(id) as
-      | { id: string; profile_enc: string }
-      | undefined;
-    if (!row) return null;
-    const { name } = this.cipher.decryptJson<{ name: string }>(row.profile_enc, aad.profile(id));
-    return { id, name };
+    const row = this.db.prepare('SELECT * FROM users WHERE id = ?').get(id) as Row | undefined;
+    return row ? this.toUser(row) : null;
+  }
+
+  createLocalUser(opts: { username: string; name: string; passwordHash: string; isAdmin: boolean; mustChangePassword: boolean }): User {
+    const id = randomUUID();
+    const now = Date.now();
+    this.db
+      .prepare(
+        `INSERT INTO users (id, oidc_sub, profile_enc, created_at, last_login_at, username, password_hash, is_admin, must_change_password)
+         VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?)`,
+      )
+      .run(id, `local|${id}`, this.cipher.encryptJson({ name: opts.name }, aad.profile(id)), now, opts.username, opts.passwordHash, opts.isAdmin ? 1 : 0, opts.mustChangePassword ? 1 : 0);
+    return this.getUser(id)!;
+  }
+
+  findLocalCredentials(username: string): LocalCredentials | null {
+    const row = this.db.prepare("SELECT * FROM users WHERE username = ? AND oidc_sub LIKE 'local|%'").get(username) as Row | undefined;
+    if (!row || !row.password_hash) return null;
+    return {
+      user: this.toUser(row),
+      passwordHash: row.password_hash as string,
+      failedLogins: row.failed_logins as number,
+      lockedUntil: row.locked_until as number,
+    };
+  }
+
+  getPasswordHash(id: string): string | null {
+    const row = this.db.prepare('SELECT password_hash FROM users WHERE id = ?').get(id) as { password_hash: string | null } | undefined;
+    return row?.password_hash ?? null;
+  }
+
+  setPassword(id: string, passwordHash: string, mustChange: boolean) {
+    this.db
+      .prepare('UPDATE users SET password_hash = ?, must_change_password = ?, failed_logins = 0, locked_until = 0 WHERE id = ?')
+      .run(passwordHash, mustChange ? 1 : 0, id);
+  }
+
+  /** Counts a failed password; locks the account for `lockMs` after `maxFailures`. Returns locked_until. */
+  recordLoginFailure(id: string, maxFailures: number, lockMs: number): number {
+    const row = this.db.prepare('SELECT failed_logins FROM users WHERE id = ?').get(id) as { failed_logins: number };
+    const failures = row.failed_logins + 1;
+    const lockedUntil = failures >= maxFailures ? Date.now() + lockMs : 0;
+    this.db.prepare('UPDATE users SET failed_logins = ?, locked_until = ? WHERE id = ?').run(lockedUntil ? 0 : failures, lockedUntil, id);
+    return lockedUntil;
+  }
+
+  recordLogin(id: string) {
+    this.db.prepare('UPDATE users SET failed_logins = 0, locked_until = 0, last_login_at = ? WHERE id = ?').run(Date.now(), id);
+  }
+
+  setAdmin(id: string, isAdmin: boolean) {
+    this.db.prepare('UPDATE users SET is_admin = ? WHERE id = ?').run(isAdmin ? 1 : 0, id);
+  }
+
+  setDisabled(id: string, disabled: boolean) {
+    this.tx(() => {
+      this.db.prepare('UPDATE users SET disabled = ? WHERE id = ?').run(disabled ? 1 : 0, id);
+      if (disabled) this.db.prepare('DELETE FROM sessions WHERE user_id = ?').run(id);
+    });
+  }
+
+  listUsers(): UserSummary[] {
+    const rows = this.db.prepare('SELECT * FROM users ORDER BY created_at').all() as Row[];
+    return rows.map((r) => ({
+      ...this.toUser(r),
+      createdAt: r.created_at as number,
+      lastLoginAt: r.last_login_at as number,
+      lockedUntil: r.locked_until as number,
+    }));
+  }
+
+  countActiveAdmins(): number {
+    return (this.db.prepare('SELECT count(*) AS n FROM users WHERE is_admin = 1 AND disabled = 0').get() as { n: number }).n;
+  }
+
+  deleteUserSessions(id: string, exceptSessionId = '') {
+    this.db.prepare('DELETE FROM sessions WHERE user_id = ? AND id <> ?').run(id, exceptSessionId);
   }
 
   deleteUser(id: string) {

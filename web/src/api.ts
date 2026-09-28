@@ -5,7 +5,28 @@ import type { DayData, DayEntry, Settings } from '../../shared/schema.ts';
 export interface Me {
   name: string;
   settings: Settings;
-  authMode: 'oidc' | 'dev';
+  authMode: 'standard' | 'dev';
+  oidc: boolean;
+  account: { kind: 'oidc' | 'local' | 'dev'; username: string | null; isAdmin: boolean; mustChangePassword: boolean };
+}
+
+export interface AdminUser {
+  id: string;
+  name: string;
+  username: string | null;
+  kind: 'oidc' | 'local' | 'dev';
+  isAdmin: boolean;
+  disabled: boolean;
+  mustChangePassword: boolean;
+  createdAt: number;
+  lastLoginAt: number | null;
+  locked: boolean;
+  self: boolean;
+}
+
+export interface AccessReport {
+  policy: { localLogin: 'disabled' | 'local-network' | 'everywhere'; localNetworks: string[]; oidc: boolean; publicUrl: string };
+  thisConnection: { addresses: string[]; local: boolean; viaPublicUrl: boolean; secure: boolean; localLoginAllowed: boolean };
 }
 
 export interface SessionInfo {
@@ -68,6 +89,13 @@ async function request<T>(method: string, url: string, body?: unknown, opts: { k
     window.location.assign('/auth/login');
     throw new ApiError(401, 'Signing in…');
   }
+  if (res.status === 403 && url.startsWith('/api/')) {
+    const err = (await res.clone().json().catch(() => ({}))) as { error?: string };
+    if (err.error === 'password-change-required') {
+      window.location.assign('/auth/password');
+      throw new ApiError(403, 'password-change-required');
+    }
+  }
   if (res.status === 423) {
     window.dispatchEvent(new Event(LOCKED_EVENT));
     throw new ApiError(423, 'locked');
@@ -113,6 +141,21 @@ export const api = {
     unsubscribe: (endpoint: string) => request<void>('POST', '/api/push/unsubscribe', { endpoint }),
     removeDevice: (id: string) => request<void>('DELETE', `/api/push/devices/${id}`),
     test: () => request<{ delivered: number }>('POST', '/api/push/test'),
+  },
+
+  account: {
+    changePassword: (current: string, password: string, confirm: string) =>
+      request<void>('POST', '/api/account/password', { current, password, confirm }),
+  },
+
+  admin: {
+    users: () => request<AdminUser[]>('GET', '/api/admin/users'),
+    access: () => request<AccessReport>('GET', '/api/admin/access'),
+    createUser: (username: string, name: string, isAdmin: boolean) =>
+      request<{ id: string; temporaryPassword: string }>('POST', '/api/admin/users', { username, name, isAdmin }),
+    resetPassword: (id: string) => request<{ temporaryPassword: string }>('POST', `/api/admin/users/${id}/reset-password`),
+    update: (id: string, patch: { disabled?: boolean; isAdmin?: boolean }) => request<void>('PATCH', `/api/admin/users/${id}`, patch),
+    remove: (id: string) => request<void>('DELETE', `/api/admin/users/${id}`),
   },
 
   shares: {

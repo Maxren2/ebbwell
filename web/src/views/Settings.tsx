@@ -4,6 +4,7 @@ import { api, type SessionInfo } from '../api.ts';
 import { useStore } from '../store.tsx';
 import { Seg, Switch, useToast } from '../ui.tsx';
 import { LockSection, NotificationsSection, SharingSection } from './SettingsExtra.tsx';
+import { AccountSection, AdminSection } from './Admin.tsx';
 
 const GOALS = { track: 'Track', conceive: 'Conceive', avoid: 'Avoid pregnancy' } as const;
 
@@ -34,6 +35,20 @@ const EVENTS: Record<string, string> = {
   'share-started': 'Partner started viewing your cycle',
   'share-updated': 'Sharing settings changed',
   'share-ended': 'Sharing ended',
+  'login-local': 'Signed in with password',
+  'login-failed': 'Wrong password entered',
+  'login-locked': 'Account locked after wrong passwords',
+  'password-changed': 'Password changed',
+  'password-reset-by-admin': 'Password reset by an administrator',
+  'password-reset-cli': 'Password reset from the server',
+  'account-created-by-admin': 'Account created by an administrator',
+  'admin-user-created': 'You created an account',
+  'admin-password-reset': "You reset someone's password",
+  'admin-granted': 'You granted administrator rights',
+  'admin-revoked': 'You removed administrator rights',
+  'admin-user-disabled': 'You disabled an account',
+  'admin-user-enabled': 'You enabled an account',
+  'admin-user-deleted': 'You deleted an account',
 };
 
 export function SettingsView() {
@@ -108,6 +123,8 @@ export function SettingsView() {
         <LockSection />
         <SharingSection />
         <DataSection />
+        <AccountSection />
+        {me.account.isAdmin && <AdminSection />}
         <SecuritySection />
 
         <section className="card stack">

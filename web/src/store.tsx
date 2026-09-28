@@ -71,7 +71,12 @@ export function StoreProvider(props: {
 
   const reload = useCallback(async () => {
     try {
-      const [m, d] = await Promise.all([api.me(), api.days()]);
+      const m = await api.me();
+      if (m.account.mustChangePassword) {
+        window.location.assign('/auth/password');
+        return;
+      }
+      const d = await api.days();
       setMe(m);
       setDays(new Map(d.map((e) => [e.date, e.data])));
       setLocked(false);

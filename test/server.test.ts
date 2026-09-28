@@ -4,14 +4,14 @@ import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { OAuth2Server } from 'oauth2-mock-server';
-import type { FastifyInstance, LightMyRequestResponse } from 'fastify';
+import type { FastifyInstance, InjectOptions, LightMyRequestResponse } from 'fastify';
 import { buildApp } from '../server/app.ts';
 import { loadConfig } from '../server/config.ts';
 import { Cipher } from '../server/crypto.ts';
 import { Store } from '../server/db.ts';
 
 const KEY = randomBytes(32).toString('base64');
-const APP_URL = 'http://ebbwell.test';
+const APP_URL = 'https://ebbwell.test';
 
 let dir: string;
 let store: Store;
@@ -30,6 +30,9 @@ async function setup(env: Record<string, string>) {
   const cipher = new Cipher(config.DATA_ENCRYPTION_KEY, config.DATA_ENCRYPTION_KEY_PREVIOUS);
   store = new Store(join(dir, 'ebbwell.sqlite'), cipher);
   app = await buildApp({ config, store, cipher });
+  // Requests reach the app through its public HTTPS domain, as behind the reverse proxy.
+  const rawInject = app.inject.bind(app) as unknown as (o: InjectOptions) => Promise<LightMyRequestResponse>;
+  app.inject = ((opts: InjectOptions) => rawInject({ ...opts, headers: { host: 'ebbwell.test', ...opts.headers } })) as unknown as typeof app.inject;
 }
 
 async function teardown() {
@@ -267,7 +270,7 @@ describe('OIDC login (mock Authentik)', () => {
   );
   afterEach(teardown);
 
-  async function runFlow(tamper?: (callback: URL) => void, loginUrl = '/auth/login') {
+  async function runFlow(tamper?: (callback: URL) => void, loginUrl = '/auth/oidc') {
     const login = await app.inject({ method: 'GET', url: loginUrl });
     expect(login.statusCode).toBe(302);
     const authorize = new URL(login.headers.location as string);
@@ -291,7 +294,7 @@ describe('OIDC login (mock Authentik)', () => {
     expect(res.statusCode).toBe(302);
     const token = cookieOf(res, '__Host-ebbwell_session')!;
     const me = await app.inject({ method: 'GET', url: '/api/me', headers: { cookie: `__Host-ebbwell_session=${token}` } });
-    expect(me.json()).toMatchObject({ name: 'Alice', authMode: 'oidc' });
+    expect(me.json()).toMatchObject({ name: 'Alice', authMode: 'standard', oidc: true, account: { kind: 'oidc', isAdmin: false } });
   });
 
   it('rejects a tampered state', async () => {
@@ -324,17 +327,17 @@ describe('OIDC login (mock Authentik)', () => {
     expect((await app.inject({ method: 'GET', url: '/api/days', headers: second })).statusCode).toBe(423);
 
     // "Forgot PIN": prompt=login + max_age=0, and auth_time must be recent.
-    const login = await app.inject({ method: 'GET', url: '/auth/login?reauth=1' });
+    const login = await app.inject({ method: 'GET', url: '/auth/oidc?reauth=1' });
     const authorize = new URL(login.headers.location as string);
     expect(authorize.searchParams.get('prompt')).toBe('login');
     expect(authorize.searchParams.get('max_age')).toBe('0');
 
     authTime = () => Math.floor(Date.now() / 1000) - 3600; // provider reused an old login
-    const stale = sessionOf(await runFlow(undefined, '/auth/login?reauth=1'));
+    const stale = sessionOf(await runFlow(undefined, '/auth/oidc?reauth=1'));
     expect((await app.inject({ method: 'GET', url: '/api/days', headers: stale })).statusCode).toBe(423);
 
     authTime = () => Math.floor(Date.now() / 1000);
-    const freshRes = await runFlow(undefined, '/auth/login?reauth=1');
+    const freshRes = await runFlow(undefined, '/auth/oidc?reauth=1');
     expect(freshRes.headers.location).toBe('/settings#lock');
     const fresh = sessionOf(freshRes);
     expect((await app.inject({ method: 'GET', url: '/api/lock', headers: fresh })).json()).toMatchObject({ locked: false, canReset: true });

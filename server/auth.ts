@@ -1,24 +1,35 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import * as oidc from 'openid-client';
-import type { Config } from './config.ts';
+import { z } from 'zod';
+import type { AccessInfo, AccessPolicy } from './access.ts';
+import { MIN_PASSWORD_LENGTH, oidcEnabled, type Config } from './config.ts';
 import { randomToken, sha256, type Cipher } from './crypto.ts';
 import type { AppLock, SessionRow, Store, User } from './db.ts';
+import { dummyHash, hashSecret, verifySecret } from './passwords.ts';
 
+/** HTTPS: host-locked, Secure cookie. */
 export const SESSION_COOKIE = '__Host-ebbwell_session';
+/** Plain-HTTP access from the local network only (browsers refuse Secure cookies over http). */
+export const SESSION_COOKIE_LAN = 'ebbwell_session';
 const FLOW_COOKIE = '__Host-ebbwell_flow';
+const FORM_COOKIE = '__Host-ebbwell_form';
+const FORM_COOKIE_LAN = 'ebbwell_form';
 const FLOW_TTL_MS = 10 * 60_000;
 const TOUCH_INTERVAL_MS = 5 * 60_000;
 const DAY_MS = 86_400_000;
-/** A fresh re-authentication (prompt=login) allows resetting a forgotten PIN for this long. */
+/** A fresh sign-in (password, or prompt=login at the provider) allows resetting a forgotten PIN for this long. */
 const RESET_WINDOW_MS = 10 * 60_000;
-/** Maximum age of auth_time for a re-authentication to count as fresh. */
+/** Maximum age of auth_time for an identity-provider re-authentication to count as fresh. */
 const FRESH_AUTH_SEC = 300;
+export const MAX_LOGIN_FAILURES = 10;
+export const LOGIN_LOCK_MS = 15 * 60_000;
 
 /** How long an unlock lasts without activity. "Lock when I leave" (0) keeps a 5-minute backstop. */
 export const lockWindowMs = (lock: AppLock) => (lock.timeoutSec > 0 ? lock.timeoutSec : 300) * 1000;
 
 declare module 'fastify' {
   interface FastifyRequest {
+    access: AccessInfo;
     user?: User;
     sessionId?: string;
     session?: SessionRow;
@@ -33,7 +44,15 @@ interface Flow {
   reauth: boolean;
 }
 
-const cookieBase = { httpOnly: true, secure: true, sameSite: 'lax', path: '/' } as const;
+const secureCookie = { httpOnly: true, secure: true, sameSite: 'lax', path: '/' } as const;
+const lanCookie = { httpOnly: true, secure: false, sameSite: 'lax', path: '/' } as const;
+const cookieFor = (access: AccessInfo) => (access.secure ? { name: SESSION_COOKIE, opts: secureCookie } : { name: SESSION_COOKIE_LAN, opts: lanCookie });
+
+/**
+ * Local accounts may be used on this request: the policy allows it, and credentials never
+ * travel over plain HTTP outside the local network.
+ */
+export const localAccountsAllowed = (access: AccessInfo) => access.localLoginAllowed && (access.secure || access.local);
 
 export class Sessions {
   private readonly store: Store;
@@ -46,23 +65,26 @@ export class Sessions {
 
   /**
    * New sessions of a user with an app lock start locked, unless the user just proved
-   * their identity again at the identity provider (fresh), which also allows a PIN reset.
+   * their identity (password entered, or forced re-authentication at the provider),
+   * which also allows a PIN reset.
    */
-  create(reply: FastifyReply, user: User, userAgent: string, fresh = false) {
+  create(request: FastifyRequest, reply: FastifyReply, user: User, fresh = false) {
     const token = randomToken();
     const now = Date.now();
     const expiresAt = now + this.config.SESSION_MAX_DAYS * DAY_MS;
     const lock = this.store.getLock(user.id);
-    this.store.createSession(sha256(token), user.id, userAgent, expiresAt, {
+    this.store.createSession(sha256(token), user.id, request.headers['user-agent'] ?? '', expiresAt, {
       unlockedUntil: lock && fresh ? now + lockWindowMs(lock) : 0,
       resetUntil: lock && fresh ? now + RESET_WINDOW_MS : 0,
     });
-    reply.setCookie(SESSION_COOKIE, token, { ...cookieBase, maxAge: this.config.SESSION_IDLE_DAYS * 86_400 });
+    const { name, opts } = cookieFor(request.access);
+    reply.setCookie(name, token, { ...opts, maxAge: this.config.SESSION_IDLE_DAYS * 86_400 });
   }
 
   /** Resolves the session cookie; refreshes the sliding idle window. */
   resolve(request: FastifyRequest, reply: FastifyReply): boolean {
-    const token = request.cookies[SESSION_COOKIE];
+    const { name, opts } = cookieFor(request.access);
+    const token = request.cookies[name];
     if (!token) return false;
     const id = sha256(token);
     const session = this.store.getSession(id);
@@ -73,11 +95,11 @@ export class Sessions {
       return false;
     }
     const user = this.store.getUser(session.userId);
-    if (!user) return false;
+    if (!user || user.disabled) return false;
     if (now - session.lastSeenAt > TOUCH_INTERVAL_MS) {
       this.store.touchSession(id, now);
       const maxAge = Math.min(this.config.SESSION_IDLE_DAYS * DAY_MS, session.expiresAt - now) / 1000;
-      reply.setCookie(SESSION_COOKIE, token, { ...cookieBase, maxAge: Math.floor(maxAge) });
+      reply.setCookie(name, token, { ...opts, maxAge: Math.floor(maxAge) });
     }
     request.user = user;
     request.sessionId = id;
@@ -87,32 +109,190 @@ export class Sessions {
 
   destroy(request: FastifyRequest, reply: FastifyReply) {
     if (request.sessionId) this.store.deleteSession(request.sessionId);
-    reply.clearCookie(SESSION_COOKIE, cookieBase);
+    const { name, opts } = cookieFor(request.access);
+    reply.clearCookie(name, opts);
   }
 }
 
-function page(title: string, message: string, action = '<a href="/auth/login">Try again</a>') {
-  const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+// ------------------------------------------------------------------ server-rendered pages
+
+const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+
+function page(title: string, body: string) {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Ebbwell</title><link rel="stylesheet" href="/auth.css"></head>
-<body><main><h1>${esc(title)}</h1><p>${esc(message)}</p><p>${action}</p></main></body></html>`;
+<meta name="robots" content="noindex"><title>Ebbwell</title><link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="/auth.css"></head>
+<body><main><img src="/icon-192.png" alt="" class="logo"><h1>${esc(title)}</h1>${body}</main></body></html>`;
 }
 
-export async function registerAuth(app: FastifyInstance, deps: { config: Config; store: Store; cipher: Cipher; sessions: Sessions }) {
+const message = (title: string, text: string, action = '<a class="button" href="/auth/login">Try again</a>') =>
+  page(title, `<p>${esc(text)}</p><p>${action}</p>`);
+
+const LOGIN_ERRORS: Record<string, string> = {
+  invalid: 'Wrong username or password.',
+  locked: 'Too many failed attempts. Try again in 15 minutes.',
+  disabled: 'This account is disabled. Contact your administrator.',
+  expired: 'The sign-in form expired. Please try again.',
+};
+
+export async function registerAuth(
+  app: FastifyInstance,
+  deps: { config: Config; store: Store; cipher: Cipher; sessions: Sessions; policy: AccessPolicy },
+) {
   const { config, store, cipher, sessions } = deps;
   const redirectUri = `${config.APP_URL}/auth/callback`;
   const authLimit = { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } };
+  const passwordLimit = { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } };
+  const useOidc = oidcEnabled(config);
+
+  // HTML forms post application/x-www-form-urlencoded.
+  app.addContentTypeParser('application/x-www-form-urlencoded', { parseAs: 'string', bodyLimit: 4096 }, (_req, body, done) => {
+    done(null, Object.fromEntries(new URLSearchParams(body as string)));
+  });
+
+  /** Double-submit token for the sign-in and password forms (login CSRF). */
+  const formToken = (request: FastifyRequest, reply: FastifyReply) => {
+    const token = randomToken(18);
+    const secure = request.access.secure;
+    reply.setCookie(secure ? FORM_COOKIE : FORM_COOKIE_LAN, token, { ...(secure ? secureCookie : lanCookie), maxAge: 1800 });
+    return token;
+  };
+  const formTokenValid = (request: FastifyRequest, submitted: unknown) => {
+    const expected = request.cookies[request.access.secure ? FORM_COOKIE : FORM_COOKIE_LAN];
+    // Browsers send "Origin: null" on form posts under our no-referrer policy, so prefer
+    // Sec-Fetch-Site; the double-submit token below is the actual protection.
+    const site = request.headers['sec-fetch-site'];
+    const origin = request.headers.origin;
+    const sameOrigin = site
+      ? site === 'same-origin'
+      : !origin || origin === 'null' || origin === `${request.access.secure ? 'https' : 'http'}://${request.headers.host}`;
+    return sameOrigin && typeof submitted === 'string' && !!expected && submitted === expected;
+  };
+
+  // ---------------------------------------------------------------- dev mode
 
   if (config.AUTH_MODE === 'dev') {
     app.log.warn('AUTH_MODE=dev: anyone reaching this server is logged in as "Dev user". Never use this in production.');
     app.get<{ Querystring: { reauth?: string } }>('/auth/login', authLimit, async (request, reply) => {
-      const user = store.upsertUser('dev-user', 'Dev user');
-      sessions.create(reply, user, request.headers['user-agent'] ?? '', request.query.reauth === '1');
+      const user = store.upsertUser('dev-user', 'Dev user', { isAdmin: true });
+      sessions.create(request, reply, user, request.query.reauth === '1');
       store.audit(user.id, 'login');
       return reply.redirect('/');
     });
-  } else {
-    // Discovery is lazy and retried, so the app starts even if Authentik is briefly down.
+  }
+
+  // ---------------------------------------------------------------- sign-in page
+
+  if (config.AUTH_MODE === 'standard') {
+    app.get<{ Querystring: { reauth?: string; error?: string } }>('/auth/login', authLimit, async (request, reply) => {
+      const reauth = request.query.reauth === '1' ? '?reauth=1' : '';
+      reply.header('Cache-Control', 'no-store');
+      if (!localAccountsAllowed(request.access)) {
+        if (useOidc) return reply.redirect(`/auth/oidc${reauth}`);
+        return reply
+          .code(403)
+          .type('text/html')
+          .send(message('Sign-in unavailable', 'Signing in is not allowed from this network. Use Ebbwell from your local network.', ''));
+      }
+      const error = LOGIN_ERRORS[request.query.error ?? ''];
+      const token = formToken(request, reply);
+      const sso = useOidc
+        ? `<div class="or"><span>or</span></div><a class="button secondary" href="/auth/oidc${reauth}">Sign in with ${esc(config.OIDC_PROVIDER_NAME)}</a>`
+        : '';
+      return reply.type('text/html').send(
+        page(
+          'Sign in to Ebbwell',
+          `${error ? `<p class="error" role="alert">${esc(error)}</p>` : ''}
+<form method="post" action="/auth/local">
+  <input type="hidden" name="csrf" value="${token}">
+  <label>Username<input name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required maxlength="32"></label>
+  <label>Password<input name="password" type="password" autocomplete="current-password" required maxlength="128"></label>
+  <button type="submit">Sign in</button>
+</form>${sso}`,
+        ),
+      );
+    });
+
+    // ---------------------------------------------------------------- local accounts
+
+    app.post('/auth/local', passwordLimit, async (request, reply) => {
+      if (!localAccountsAllowed(request.access)) {
+        store.audit(null, 'login-local-refused-network');
+        return reply.code(403).type('text/html').send(message('Sign-in unavailable', 'Password sign-in is not allowed from this network.', ''));
+      }
+      const body = (request.body ?? {}) as Record<string, unknown>;
+      if (!formTokenValid(request, body.csrf)) return reply.redirect('/auth/login?error=expired', 303);
+      const username = typeof body.username === 'string' ? body.username.trim().toLowerCase() : '';
+      const password = typeof body.password === 'string' ? body.password : '';
+
+      const creds = username ? store.findLocalCredentials(username) : null;
+      if (!creds) {
+        await verifySecret(password, await dummyHash()); // same timing as a real check
+        return reply.redirect('/auth/login?error=invalid', 303);
+      }
+      if (creds.lockedUntil > Date.now()) return reply.redirect('/auth/login?error=locked', 303);
+      if (!(await verifySecret(password, creds.passwordHash))) {
+        const locked = store.recordLoginFailure(creds.user.id, MAX_LOGIN_FAILURES, LOGIN_LOCK_MS);
+        store.audit(creds.user.id, locked ? 'login-locked' : 'login-failed');
+        return reply.redirect(`/auth/login?error=${locked ? 'locked' : 'invalid'}`, 303);
+      }
+      if (creds.user.disabled) return reply.redirect('/auth/login?error=disabled', 303);
+
+      store.recordLogin(creds.user.id);
+      // A password was just typed: the session starts unlocked and may reset a forgotten PIN.
+      sessions.create(request, reply, creds.user, true);
+      store.audit(creds.user.id, 'login-local');
+      return reply.redirect(creds.user.mustChangePassword ? '/auth/password' : '/', 303);
+    });
+
+    const passwordPage = (request: FastifyRequest, reply: FastifyReply, error?: string) => {
+      const forced = request.user!.mustChangePassword;
+      const token = formToken(request, reply);
+      return reply.type('text/html').send(
+        page(
+          forced ? 'Choose your password' : 'Change password',
+          `${forced ? '<p>Your account uses a temporary password. Choose your own to continue.</p>' : ''}
+${error ? `<p class="error" role="alert">${esc(error)}</p>` : ''}
+<form method="post" action="/auth/password">
+  <input type="hidden" name="csrf" value="${token}">
+  <input type="hidden" name="username" autocomplete="username" value="${esc(request.user!.username ?? '')}">
+  ${forced ? '' : '<label>Current password<input name="current" type="password" autocomplete="current-password" required maxlength="128"></label>'}
+  <label>New password (at least ${MIN_PASSWORD_LENGTH} characters)<input name="password" type="password" autocomplete="new-password" required minlength="${MIN_PASSWORD_LENGTH}" maxlength="128"></label>
+  <label>Repeat new password<input name="confirm" type="password" autocomplete="new-password" required maxlength="128"></label>
+  <button type="submit">Save password</button>
+</form>`,
+        ),
+      );
+    };
+
+    app.get('/auth/password', authLimit, async (request, reply) => {
+      reply.header('Cache-Control', 'no-store');
+      if (!sessions.resolve(request, reply)) return reply.redirect('/auth/login');
+      if (request.user!.kind !== 'local') return reply.redirect('/');
+      return passwordPage(request, reply);
+    });
+
+    app.post('/auth/password', passwordLimit, async (request, reply) => {
+      if (!sessions.resolve(request, reply)) return reply.redirect('/auth/login', 303);
+      const user = request.user!;
+      if (user.kind !== 'local' || !localAccountsAllowed(request.access)) return reply.redirect('/', 303);
+      const body = (request.body ?? {}) as Record<string, unknown>;
+      if (!formTokenValid(request, body.csrf)) return passwordPage(request, reply, 'The form expired. Please try again.');
+      const result = await changePassword(store, user, {
+        current: user.mustChangePassword ? undefined : String(body.current ?? ''),
+        password: String(body.password ?? ''),
+        confirm: String(body.confirm ?? ''),
+      });
+      if (result !== 'ok') return passwordPage(request, reply, result);
+      store.deleteUserSessions(user.id, request.sessionId);
+      store.audit(user.id, 'password-changed');
+      return reply.redirect('/', 303);
+    });
+  }
+
+  // ---------------------------------------------------------------- OpenID Connect
+
+  if (useOidc) {
+    // Discovery is lazy and retried, so the app starts even if the provider is briefly down.
     let configPromise: Promise<oidc.Configuration> | null = null;
     const getConfig = () => {
       configPromise ??= oidc
@@ -131,13 +311,13 @@ export async function registerAuth(app: FastifyInstance, deps: { config: Config;
     };
     app.decorate('oidcConfig', getConfig);
 
-    app.get<{ Querystring: { reauth?: string } }>('/auth/login', authLimit, async (request, reply) => {
+    app.get<{ Querystring: { reauth?: string } }>('/auth/oidc', authLimit, async (request, reply) => {
       let oidcConfig: oidc.Configuration;
       try {
         oidcConfig = await getConfig();
       } catch (err) {
         app.log.error({ err }, 'OIDC discovery failed');
-        return reply.code(503).type('text/html').send(page('Sign-in unavailable', 'The identity provider could not be reached.'));
+        return reply.code(503).type('text/html').send(message('Sign-in unavailable', 'The identity provider could not be reached.'));
       }
       const flow: Flow = {
         verifier: oidc.randomPKCECodeVerifier(),
@@ -156,13 +336,13 @@ export async function registerAuth(app: FastifyInstance, deps: { config: Config;
         // Re-authentication (forgotten PIN): force the identity provider to ask for credentials again.
         ...(flow.reauth ? { prompt: 'login', max_age: '0' } : {}),
       });
-      reply.setCookie(FLOW_COOKIE, cipher.encryptJson(flow, 'oidc-flow'), { ...cookieBase, maxAge: FLOW_TTL_MS / 1000 });
+      reply.setCookie(FLOW_COOKIE, cipher.encryptJson(flow, 'oidc-flow'), { ...secureCookie, maxAge: FLOW_TTL_MS / 1000 });
       return reply.redirect(url.href);
     });
 
     app.get('/auth/callback', authLimit, async (request, reply) => {
       const raw = request.cookies[FLOW_COOKIE];
-      reply.clearCookie(FLOW_COOKIE, cookieBase);
+      reply.clearCookie(FLOW_COOKIE, secureCookie);
       let flow: Flow | null = null;
       try {
         flow = raw ? cipher.decryptJson<Flow>(raw, 'oidc-flow') : null;
@@ -170,7 +350,7 @@ export async function registerAuth(app: FastifyInstance, deps: { config: Config;
         flow = null;
       }
       if (!flow || flow.exp < Date.now()) {
-        return reply.code(400).type('text/html').send(page('Sign-in expired', 'The sign-in attempt expired or was started elsewhere.'));
+        return reply.code(400).type('text/html').send(message('Sign-in expired', 'The sign-in attempt expired or was started elsewhere.'));
       }
       let claims: oidc.IDToken;
       try {
@@ -185,25 +365,25 @@ export async function registerAuth(app: FastifyInstance, deps: { config: Config;
         claims = tokens.claims()!;
       } catch (err) {
         request.log.warn({ err: (err as Error).message }, 'OIDC callback rejected');
-        return reply.code(400).type('text/html').send(page('Sign-in failed', 'The identity provider response could not be verified.'));
+        return reply.code(400).type('text/html').send(message('Sign-in failed', 'The identity provider response could not be verified.'));
       }
 
-      if (config.OIDC_ALLOWED_GROUPS.length) {
-        const groups = Array.isArray(claims.groups) ? (claims.groups as unknown[]).map(String) : [];
-        if (!groups.some((g) => config.OIDC_ALLOWED_GROUPS.includes(g))) {
-          store.audit(null, 'login-denied-group');
-          return reply
-            .code(403)
-            .type('text/html')
-            .send(page('Access denied', 'Your account is not allowed to use this app.', ''));
-        }
+      const groups = Array.isArray(claims.groups) ? (claims.groups as unknown[]).map(String) : [];
+      if (config.OIDC_ALLOWED_GROUPS.length && !groups.some((g) => config.OIDC_ALLOWED_GROUPS.includes(g))) {
+        store.audit(null, 'login-denied-group');
+        return reply.code(403).type('text/html').send(message('Access denied', 'Your account is not allowed to use this app.', ''));
       }
 
       const name = String(claims.name ?? claims.preferred_username ?? claims.given_name ?? 'You').slice(0, 100);
-      const user = store.upsertUser(`${claims.iss}|${claims.sub}`, name);
+      const isAdmin = config.OIDC_ADMIN_GROUPS.length ? groups.some((g) => config.OIDC_ADMIN_GROUPS.includes(g)) : undefined;
+      const user = store.upsertUser(`${claims.iss}|${claims.sub}`, name, { isAdmin });
+      if (user.disabled) {
+        store.audit(user.id, 'login-denied-disabled');
+        return reply.code(403).type('text/html').send(message('Account disabled', 'This account is disabled. Contact your administrator.', ''));
+      }
       const authTime = typeof claims.auth_time === 'number' ? claims.auth_time : 0;
       const fresh = flow.reauth && Date.now() / 1000 - authTime <= FRESH_AUTH_SEC;
-      sessions.create(reply, user, request.headers['user-agent'] ?? '', fresh);
+      sessions.create(request, reply, user, fresh);
       store.audit(user.id, fresh ? 'login-reauth' : 'login');
       return reply.redirect(fresh ? '/settings#lock' : '/');
     });
@@ -212,15 +392,37 @@ export async function registerAuth(app: FastifyInstance, deps: { config: Config;
   app.post('/auth/logout', authLimit, async (request, reply) => {
     sessions.resolve(request, reply);
     const userId = request.user?.id;
+    const kind = request.user?.kind;
     sessions.destroy(request, reply);
     if (userId) store.audit(userId, 'logout');
     reply.header('Clear-Site-Data', '"cache", "cookies", "storage"');
-    return { redirect: await endSessionUrl(app, config) };
+    return { redirect: kind === 'oidc' ? await endSessionUrl(app, config) : '/signed-out.html' };
   });
 }
 
+// ------------------------------------------------------------------ passwords
+
+const passwordSchema = z.string().min(MIN_PASSWORD_LENGTH).max(128);
+
+/** Shared by the password page and the settings API. Returns 'ok' or a user-facing error. */
+export async function changePassword(
+  store: Store,
+  user: User,
+  input: { current?: string; password: string; confirm: string },
+): Promise<string> {
+  if (input.current !== undefined) {
+    const hash = store.getPasswordHash(user.id);
+    if (!hash || !(await verifySecret(input.current, hash))) return 'Your current password is wrong.';
+  }
+  if (!passwordSchema.safeParse(input.password).success) return `Use between ${MIN_PASSWORD_LENGTH} and 128 characters.`;
+  if (input.password !== input.confirm) return "The two passwords don't match.";
+  if (user.username && input.password.toLowerCase().includes(user.username)) return "Don't include your username in the password.";
+  store.setPassword(user.id, await hashSecret(input.password), false);
+  return 'ok';
+}
+
 export async function endSessionUrl(app: FastifyInstance, config: Config): Promise<string> {
-  if (config.AUTH_MODE !== 'oidc' || !config.OIDC_LOGOUT_SSO) return '/signed-out.html';
+  if (!oidcEnabled(config) || !config.OIDC_LOGOUT_SSO) return '/signed-out.html';
   try {
     const oidcConfig = await (app as unknown as { oidcConfig: () => Promise<oidc.Configuration> }).oidcConfig();
     if (!oidcConfig.serverMetadata().end_session_endpoint) return '/signed-out.html';

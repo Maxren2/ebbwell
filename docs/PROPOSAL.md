@@ -80,7 +80,7 @@ The name and icon are deliberately neutral: "Ebbwell" (the ebb of the moon-drive
 
 ### E. Recommended next (Phase 3)
 
-- **Local accounts** (password + TOTP), for installations without an OIDC provider. This matters for a public app catalog.
+- ~~**Local accounts**~~: built in 0.3.0. Passwords are accepted nowhere / on the local network only (never through the public domain) / everywhere, as set by the admin in the deployment configuration. Next: an optional TOTP second factor for local accounts.
 - **Import from other apps** (Clue, drip, Flo CSV exports).
 - Translations (French, German…).
 - **Offline logging queue**, stored encrypted on the device and synced later. This is a trade-off: it puts health data on the device.

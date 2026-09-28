@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { startAuthentication } from '@simplewebauthn/browser';
 import { ApiError, api, type LockStatus } from '../api.ts';
-import { hasDeviceBiometric } from '../device.ts';
+import { hasDeviceBiometric, secureContext } from '../device.ts';
 
 const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', '⌫'] as const;
 
@@ -15,7 +15,7 @@ export function LockScreen({ onUnlocked }: { onUnlocked: () => void }) {
     api.lock.status().then(setStatus).catch(() => setStatus(null));
   }, []);
 
-  const biometricAvailable = !!status?.biometrics && hasDeviceBiometric() && 'credentials' in navigator;
+  const biometricAvailable = !!status?.biometrics && secureContext() && hasDeviceBiometric() && 'credentials' in navigator;
 
   const submit = useCallback(
     async (value: string) => {

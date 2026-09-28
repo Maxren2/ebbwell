@@ -1,13 +1,13 @@
 // App lock: a PIN (and optionally biometrics through WebAuthn platform authenticators)
-// guards every API call of a session on top of the Authentik login. The server enforces
+// guards every API call of a session on top of the sign-in. The server enforces
 // it, so a stolen or left-open session is useless without the PIN.
 //
 //  - PINs are 4–8 digits, hashed with scrypt. Five wrong attempts destroy the session,
-//    which then requires a full Authentik login (and the PIN again).
-//  - A forgotten PIN can only be reset after a fresh re-authentication at Authentik
-//    (prompt=login), not with a still-valid SSO cookie.
+//    which then requires signing in again (and the PIN again).
+//  - A forgotten PIN can only be reset after a fresh sign-in: the local password, or a
+//    forced re-authentication at the identity provider (prompt=login), not an SSO cookie.
 
-import { randomBytes, scrypt as scryptCb, timingSafeEqual, type ScryptOptions } from 'node:crypto';
+import { hashSecret as hashPin, verifySecret as verifyPin } from './passwords.ts';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import {
   generateAuthenticationOptions,
@@ -32,29 +32,7 @@ const SLIDE_THROTTLE_MS = 15_000;
 const pinSchema = z.string().regex(/^\d{4,8}$/, 'PIN must be 4 to 8 digits');
 const timeoutSchema = z.number().refine((v) => (LOCK_TIMEOUTS as readonly number[]).includes(v));
 
-// ------------------------------------------------------------------ PIN hashing
-
-const SCRYPT = { N: 2 ** 15, r: 8, p: 1, maxmem: 64 * 1024 * 1024 } satisfies ScryptOptions;
-
-function scrypt(pin: string, salt: Buffer, params: ScryptOptions): Promise<Buffer> {
-  return new Promise((resolve, reject) =>
-    scryptCb(pin, salt, 32, params, (err, key) => (err ? reject(err) : resolve(key))),
-  );
-}
-
-export async function hashPin(pin: string): Promise<string> {
-  const salt = randomBytes(16);
-  const key = await scrypt(pin, salt, SCRYPT);
-  return ['scrypt', SCRYPT.N, SCRYPT.r, SCRYPT.p, salt.toString('base64url'), key.toString('base64url')].join('$');
-}
-
-export async function verifyPin(pin: string, stored: string): Promise<boolean> {
-  const [alg, N, r, p, salt, hash] = stored.split('$');
-  if (alg !== 'scrypt' || !salt || !hash) return false;
-  const expected = Buffer.from(hash, 'base64url');
-  const key = await scrypt(pin, Buffer.from(salt, 'base64url'), { N: Number(N), r: Number(r), p: Number(p), maxmem: SCRYPT.maxmem });
-  return key.length === expected.length && timingSafeEqual(key, expected);
-}
+export { hashSecret as hashPin, verifySecret as verifyPin } from './passwords.ts';
 
 // ------------------------------------------------------------------ enforcement
 

@@ -2,7 +2,7 @@
 
 # Ebbwell
 
-A private, self-hosted period tracker and ovulation estimator. It runs as a web app you can install on iPhone, Android and desktop, and you host it yourself (Docker / TrueNAS SCALE) behind your own OpenID Connect login (Authentik, Authelia, Keycloak, Pocket ID…).
+A private, self-hosted period tracker and ovulation estimator. It runs as a web app you can install on iPhone, Android and desktop, and you host it yourself (Docker / TrueNAS SCALE). Sign-in uses your own OpenID Connect provider (Authentik, Authelia, Keycloak, Pocket ID…) and/or local accounts, which you can restrict to your home network.
 
 <p align="center">
   <img src="docs/screenshots/today.png" width="200" alt="Today">
@@ -34,7 +34,8 @@ Calendar-only period apps predict the ovulation day correctly only about 8–21%
 | Reminders | Web Push: morning temperature, evening check-in, period coming, fertile window, partner's period. Discreet wording by default |
 | App lock | Server-enforced PIN, Face ID / Touch ID / fingerprint (WebAuthn), auto-lock, lockout after 5 wrong PINs, PIN reset only after a fresh identity-provider login |
 | Partner sharing | Single-use invite link; read-only view with owner-chosen scopes (fertility, history, symptoms & mood). Notes and intimate details are never shared |
-| Security | OIDC + PKCE, hashed server-side sessions, device list, CSRF protection, rate limiting, audit log, key rotation, daily encrypted backups |
+| Accounts | Single sign-on (OIDC + PKCE) and/or local accounts. You choose where passwords are accepted: nowhere, local network only (never through the public domain), or everywhere. Admin panel: create/reset/disable accounts; admins never see cycle data |
+| Security | Hashed server-side sessions, device list, CSRF protection, rate limiting and account lockout, audit log, key rotation, daily encrypted backups |
 | Platforms | Installable PWA (iOS 16.4+, Android, desktop), light/dark, offline app shell |
 
 > Ebbwell is a journal, **not a medical device and not a contraceptive**.
@@ -46,15 +47,16 @@ docker run -d --name ebbwell -p 8080:8080 -v ebbwell-data:/data \
   -e APP_URL=https://ebbwell.example.com \
   -e OIDC_ISSUER=https://auth.example.com/application/o/ebbwell/ \
   -e OIDC_CLIENT_ID=... -e OIDC_CLIENT_SECRET=... \
+  -e LOCAL_LOGIN=local-network -e ADMIN_USERNAME=admin -e ADMIN_PASSWORD=... \
   -e DATA_ENCRYPTION_KEY="$(openssl rand -base64 32)" \
-  ghcr.io/maxren2/ebbwell:0.2.0
+  ghcr.io/maxren2/ebbwell:0.3.0
 ```
 
 Keep a copy of `DATA_ENCRYPTION_KEY`: without it the data can't be decrypted.
 
 **[docs/DEPLOY.md](docs/DEPLOY.md)** covers:
 
-- the Authentik provider;
+- the Authentik provider, and local accounts with the network policy;
 - TrueNAS "Install via YAML" ([deploy/truenas-compose.yaml](deploy/truenas-compose.yaml));
 - the reverse proxy;
 - phone installation, reminders, the app lock and partner sharing;

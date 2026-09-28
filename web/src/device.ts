@@ -28,8 +28,11 @@ export function isIos(): boolean {
   return /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 }
 
+/** Service workers, push and biometrics need HTTPS (not available on plain-HTTP LAN access). */
+export const secureContext = () => window.isSecureContext;
+
 export function pushSupported(): boolean {
-  return 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+  return secureContext() && 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
 }
 
 export function urlBase64ToUint8Array(base64: string): Uint8Array<ArrayBuffer> {

@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, InjectOptions, LightMyRequestResponse } from 'fastify';
 import { buildApp } from '../server/app.ts';
 import { loadConfig } from '../server/config.ts';
 import { Cipher, randomToken, sha256 } from '../server/crypto.ts';
@@ -13,7 +13,7 @@ import { runReminders, type PushPayload, type PushResult } from '../server/push.
 import { addDays, fromEpochDay } from '../shared/dates.ts';
 import { defaultSettings, type DayData, type Settings } from '../shared/schema.ts';
 
-const APP_URL = 'http://ebbwell.test';
+const APP_URL = 'https://ebbwell.test';
 const csrf = { 'x-ebbwell-csrf': '1', origin: APP_URL };
 const json = { ...csrf, 'content-type': 'application/json' };
 
@@ -44,6 +44,9 @@ beforeEach(async () => {
   pushed = [];
   pushResult = 'ok';
   app = await buildApp({ config, store, cipher, push: { publicKey: 'test-public-key', send } });
+  // Requests reach the app through its public HTTPS domain, as behind the reverse proxy.
+  const rawInject = app.inject.bind(app) as unknown as (o: InjectOptions) => Promise<LightMyRequestResponse>;
+  app.inject = ((opts: InjectOptions) => rawInject({ ...opts, headers: { host: 'ebbwell.test', ...opts.headers } })) as unknown as typeof app.inject;
 });
 
 afterEach(async () => {

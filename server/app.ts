@@ -6,8 +6,10 @@ import rateLimit from '@fastify/rate-limit';
 import fastifyStatic from '@fastify/static';
 import { z } from 'zod';
 import { DayDataSchema, SettingsSchema, isEmptyDay, isoDate, type DayEntry } from '../shared/schema.ts';
-import { Sessions, endSessionUrl, registerAuth } from './auth.ts';
-import type { Config } from './config.ts';
+import { AccessPolicy, type AccessInfo } from './access.ts';
+import { ensureBootstrapAdmin, registerAdminRoutes } from './admin.ts';
+import { Sessions, endSessionUrl, localAccountsAllowed, registerAuth } from './auth.ts';
+import { oidcEnabled, type Config } from './config.ts';
 import type { Cipher } from './crypto.ts';
 import type { Store } from './db.ts';
 import { enforceLock, registerLockRoutes } from './lock.ts';
@@ -96,8 +98,16 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   });
 
   // ---------------------------------------------------------------- auth
+  // Where is this request coming from (local network? through the public domain?).
+  const policy = new AccessPolicy(config);
+  app.decorateRequest('access', null as unknown as AccessInfo);
+  app.addHook('onRequest', async (request) => {
+    request.access = policy.evaluate(request);
+  });
+
   const sessions = new Sessions(store, config);
-  await registerAuth(app, { ...deps, sessions });
+  await registerAuth(app, { ...deps, sessions, policy });
+  await ensureBootstrapAdmin(store, config, (msg) => app.log.info(msg));
 
   // Every /api route needs a session; writes also need same-origin proof (CSRF).
   app.addHook('onRequest', async (request, reply) => {
@@ -105,12 +115,22 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     if (request.method !== 'GET' && request.method !== 'HEAD') {
       const origin = request.headers.origin;
       const site = request.headers['sec-fetch-site'];
-      if ((origin && origin !== appOrigin) || (site && site !== 'same-origin') || request.headers['x-ebbwell-csrf'] !== '1') {
+      // The public origin, or the request's own origin (direct local-network access, e.g. http://nas:port).
+      const ownOrigin = `${request.access.secure ? 'https' : 'http'}://${request.headers.host}`;
+      if ((origin && origin !== appOrigin && origin !== ownOrigin) || (site && site !== 'same-origin') || request.headers['x-ebbwell-csrf'] !== '1') {
         return reply.code(403).send({ error: 'forbidden' });
       }
     }
     if (!sessions.resolve(request, reply)) {
       return reply.code(401).send({ error: 'unauthenticated' });
+    }
+    const user = request.user!;
+    // Local accounts only work where the sign-in policy allows passwords (e.g. never via the public domain).
+    if (user.kind === 'local' && !localAccountsAllowed(request.access)) {
+      return reply.code(401).send({ error: 'local-account-not-allowed-here' });
+    }
+    if (user.mustChangePassword && request.url !== '/api/me') {
+      return reply.code(403).send({ error: 'password-change-required' });
     }
     // App lock (PIN / biometrics): locked sessions only reach the unlock endpoints.
     if (!enforceLock(store, request, reply)) return reply;
@@ -121,11 +141,16 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   // ---------------------------------------------------------------- API
   const uid = (request: { user?: { id: string } }) => request.user!.id;
 
-  app.get('/api/me', async (request) => ({
-    name: request.user!.name,
-    settings: store.getSettings(uid(request)),
-    authMode: config.AUTH_MODE,
-  }));
+  app.get('/api/me', async (request) => {
+    const u = request.user!;
+    return {
+      name: u.name,
+      settings: store.getSettings(uid(request)),
+      authMode: config.AUTH_MODE,
+      account: { kind: u.kind, username: u.username, isAdmin: u.isAdmin, mustChangePassword: u.mustChangePassword },
+      oidc: oidcEnabled(config),
+    };
+  });
 
   app.put('/api/settings', async (request, reply) => {
     const parsed = SettingsSchema.safeParse(request.body);
@@ -206,12 +231,18 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   app.post('/api/ping', async (_request, reply) => reply.code(204).send());
 
   registerLockRoutes(app, { config, store, sessions });
+  registerAdminRoutes(app, { config, store, policy });
   registerPushRoutes(app, { store, publicKey: push.publicKey, send: push.send });
   registerSharingRoutes(app, { config, store });
 
   app.delete('/api/account', async (request, reply) => {
     const body = z.object({ confirm: z.literal('DELETE') }).safeParse(request.body);
     if (!body.success) return reply.code(400).send({ error: 'confirmation-required' });
+    // The last administrator can't leave others without anyone to manage accounts.
+    const me = request.user!;
+    if (me.isAdmin && store.countActiveAdmins() <= 1 && store.listUsers().length > 1) {
+      return reply.code(409).send({ error: 'last-admin' });
+    }
     store.deleteUser(uid(request));
     sessions.destroy(request, reply);
     reply.header('Clear-Site-Data', '"cache", "cookies", "storage"');

@@ -3,7 +3,7 @@ import { startRegistration } from '@simplewebauthn/browser';
 import { SCOPE_LABELS, SHARE_SCOPES, type ShareScope } from '../../../shared/partner.ts';
 import type { NotificationSettings } from '../../../shared/schema.ts';
 import { ApiError, LOCKED_EVENT, api, type LockStatus, type SharesInfo } from '../api.ts';
-import { hasDeviceBiometric, isIos, isStandalone, pushSupported, setDeviceBiometric, urlBase64ToUint8Array } from '../device.ts';
+import { hasDeviceBiometric, isIos, isStandalone, pushSupported, secureContext, setDeviceBiometric, urlBase64ToUint8Array } from '../device.ts';
 import { navigate } from '../router.ts';
 import { useStore } from '../store.tsx';
 import { Switch, useToast } from '../ui.tsx';
@@ -84,9 +84,11 @@ export function NotificationsSection() {
       <h3>Reminders</h3>
       {!supported || needsInstall ? (
         <p className="small muted">
-          {needsInstall
-            ? 'On iPhone and iPad, notifications work once Ebbwell is on your Home Screen: Share → Add to Home Screen, then open it from the icon.'
-            : "This browser doesn't support push notifications."}
+          {!secureContext()
+            ? 'Notifications need the HTTPS address of Ebbwell (they are not available over plain HTTP on the local network).'
+            : needsInstall
+              ? 'On iPhone and iPad, notifications work once Ebbwell is on your Home Screen: Share → Add to Home Screen, then open it from the icon.'
+              : "This browser doesn't support push notifications."}
         </p>
       ) : (
         <div className="row">
@@ -337,7 +339,7 @@ export function LockSection() {
               </div>
             ))}
           </div>
-          {'credentials' in navigator && !deviceHasBiometric && (
+          {secureContext() && 'credentials' in navigator && !deviceHasBiometric && (
             <button className="btn" disabled={busy} onClick={addBiometric}>
               Use Face ID / fingerprint on this device
             </button>
