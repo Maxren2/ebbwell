@@ -3,7 +3,8 @@ import { addDays, dateRange, diffDays } from '../../../shared/dates.ts';
 import { MUCUS_LABELS, mucusCategory, type Cycle } from '../../../shared/engine.ts';
 import { navigate } from '../router.ts';
 import { useStore } from '../store.tsx';
-import { METHOD, fmtDate, fmtTemp, toDisplayTemp } from '../format.ts';
+import { fmtDate, fmtTemp, toDisplayTemp } from '../format.ts';
+import { useT } from '../i18n.tsx';
 import { Icon } from '../ui.tsx';
 
 const COL = 24;
@@ -14,6 +15,7 @@ const ROW = 22;
 
 export function ChartView() {
   const { analysis, today } = useStore();
+  const t = useT();
   const [index, setIndex] = useState<number | null>(null);
   const cycles = analysis.cycles;
   const i = index ?? cycles.length - 1;
@@ -22,28 +24,28 @@ export function ChartView() {
   return (
     <>
       <header className="page-header">
-        <h1>Chart</h1>
+        <h1>{t.chart.title}</h1>
       </header>
       {!cycle ? (
         <div className="card">
-          <p className="muted">Log a period to see your cycle chart.</p>
+          <p className="muted">{t.chart.empty}</p>
         </div>
       ) : (
         <div className="stack">
           <div className="card spread">
-            <button className="icon-btn" aria-label="Previous cycle" disabled={i === 0} onClick={() => setIndex(i - 1)}>
+            <button className="icon-btn" aria-label={t.chart.previous} disabled={i === 0} onClick={() => setIndex(i - 1)}>
               <Icon name="left" />
             </button>
             <div className="center">
               <h2 style={{ margin: 0 }}>
-                {fmtDate(cycle.start)} – {cycle.end ? fmtDate(cycle.end) : 'today'}
+                {fmtDate(cycle.start)} – {cycle.end ? fmtDate(cycle.end) : t.chart.now}
               </h2>
               <div className="small muted">
-                {cycle.length ? `${cycle.length} days` : `Current cycle · day ${diffDays(cycle.start, today) + 1}`}
-                {cycle.excluded && ' · excluded from statistics'}
+                {cycle.length ? t.common.days(cycle.length) : t.chart.current(diffDays(cycle.start, today) + 1)}
+                {cycle.excluded && t.chart.excluded}
               </div>
             </div>
-            <button className="icon-btn" aria-label="Next cycle" disabled={i >= cycles.length - 1} onClick={() => setIndex(i + 1)}>
+            <button className="icon-btn" aria-label={t.chart.next} disabled={i >= cycles.length - 1} onClick={() => setIndex(i + 1)}>
               <Icon name="right" />
             </button>
           </div>
@@ -59,40 +61,42 @@ export function ChartView() {
 
 function Evaluation({ cycle }: { cycle: Cycle }) {
   const { settings } = useStore();
+  const t = useT();
+  const c = t.chart;
   const unit = settings.temperatureUnit;
-  const t = cycle.temperature;
+  const temp = cycle.temperature;
   const day = (d: string) => diffDays(cycle.start, d) + 1;
-  const rule = { regular: 'regular rule', exception1: '1st exception', exception2: '2nd exception' };
   return (
     <div className="card list small">
       <div>
-        <strong>Temperature: </strong>
-        {!t
-          ? 'no shift detected yet (needs 6 low + 3 higher readings).'
-          : t.status === 'confirmed'
-            ? `shift confirmed on day ${day(t.confirmedOn!)} (${rule[t.rule!]}); first higher reading on day ${day(t.firstHigh)}, cover line ${fmtTemp(t.coverline, unit)}.`
-            : `${t.highDates.length} reading(s) above the cover line ${fmtTemp(t.coverline, unit)} — waiting for confirmation.`}
+        <strong>{c.temperature}</strong>
+        {!temp
+          ? c.noShift
+          : temp.status === 'confirmed'
+            ? c.shiftConfirmed(day(temp.confirmedOn!), c.rules[temp.rule!], day(temp.firstHigh), fmtTemp(temp.coverline, unit))
+            : c.shiftPending(temp.highDates.length, fmtTemp(temp.coverline, unit))}
       </div>
       <div>
-        <strong>Mucus peak: </strong>
+        <strong>{c.mucusPeak}</strong>
         {cycle.mucusPeak
-          ? `day ${day(cycle.mucusPeak.peak)} (${MUCUS_LABELS[cycle.mucusPeak.category]}), confirmed on day ${day(cycle.mucusPeak.confirmedOn)}.`
-          : 'not identified (needs the peak followed by 3 days of lower quality).'}
+          ? c.peakFound(day(cycle.mucusPeak.peak), MUCUS_LABELS[cycle.mucusPeak.category], day(cycle.mucusPeak.confirmedOn))
+          : c.peakNone}
       </div>
       <div>
-        <strong>Ovulation: </strong>
-        {cycle.ovulation ? `day ${cycle.ovulationDay} — ${METHOD[cycle.ovulation.method]}.` : 'not determined.'}
-        {cycle.lutealLength !== null && ` Luteal phase ${cycle.lutealLength} days.`}
+        <strong>{c.ovulation}</strong>
+        {cycle.ovulation && cycle.ovulationDay !== null ? c.ovulationFound(cycle.ovulationDay, t.method[cycle.ovulation.method]) : c.ovulationNone}
+        {cycle.lutealLength !== null && c.luteal(cycle.lutealLength)}
       </div>
       {cycle.postOvulatoryInfertileFrom && (
         <div>
-          <strong>Double check: </strong>complete on day {day(cycle.postOvulatoryInfertileFrom)} (evening).
+          <strong>{c.doubleCheck}</strong>
+          {c.doubleCheckDone(day(cycle.postOvulatoryInfertileFrom))}
         </div>
       )}
       {cycle.intermenstrualBleeding.length > 0 && (
         <div>
-          <strong>Bleeding between periods: </strong>
-          {cycle.intermenstrualBleeding.map((d) => `day ${day(d)}`).join(', ')}.
+          <strong>{c.bleedingBetween}</strong>
+          {cycle.intermenstrualBleeding.map((d) => c.dayN(day(d))).join(', ')}.
         </div>
       )}
     </div>
@@ -101,6 +105,7 @@ function Evaluation({ cycle }: { cycle: Cycle }) {
 
 function CycleChart({ cycle, to }: { cycle: Cycle; to: string }) {
   const { days, settings } = useStore();
+  const c = useT().chart;
   const unit = settings.temperatureUnit;
   const dates = dateRange(cycle.start, to);
   const n = Math.max(dates.length, 28);
@@ -134,8 +139,9 @@ function CycleChart({ cycle, to }: { cycle: Cycle; to: string }) {
   const ticks = Math.round((hi - lo) / step);
 
   return (
-    <div className="chart-scroll">
-      <svg className="chart" width={width} height={height} role="img" aria-label="Temperature and observations for this cycle">
+    // Time runs left to right in every language.
+    <div className="chart-scroll" dir="ltr">
+      <svg className="chart" width={width} height={height} role="img" aria-label={c.aria}>
         {/* grid */}
         {Array.from({ length: ticks + 1 }, (_, k) => {
           const v = lo + k * step;
@@ -176,7 +182,7 @@ function CycleChart({ cycle, to }: { cycle: Cycle; to: string }) {
               strokeDasharray="5 4"
             />
             <text x={width - 10} y={y(toDisplayTemp(t.coverline, unit)) - 5} fontSize="10" textAnchor="end" style={{ fill: 'var(--ovulation)' }}>
-              cover line
+              {c.coverLine}
             </text>
           </g>
         )}
@@ -216,8 +222,8 @@ function CycleChart({ cycle, to }: { cycle: Cycle; to: string }) {
         })}
 
         {/* rows */}
-        {['Day', 'Bleed', 'Mucus', 'Tests'].map((label, k) => (
-          <text key={label} x={4} y={rowsTop + k * ROW + 15} fontSize="10" fontWeight="600">
+        {[c.rows.day, c.rows.bleeding, c.rows.mucus, c.rows.tests].map((label, k) => (
+          <text key={k} x={4} y={rowsTop + k * ROW + 15} fontSize="10" fontWeight="600">
             {label}
           </text>
         ))}

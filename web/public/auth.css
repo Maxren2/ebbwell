@@ -19,7 +19,7 @@ main { width: min(24rem, 100%); padding: 2rem 0; text-align: center; }
 .logo { width: 64px; height: 64px; border-radius: 16px; }
 h1 { font-size: 1.4rem; margin: .75rem 0 1rem; }
 p { color: var(--muted); }
-form { display: grid; gap: .9rem; text-align: left; }
+form { display: grid; gap: .9rem; text-align: start; }
 label { display: grid; gap: .35rem; font-size: .85rem; color: var(--muted); }
 input {
   width: 100%; min-height: 46px; padding: .6rem .8rem; border-radius: 12px; border: 1px solid var(--border);
@@ -34,11 +34,11 @@ button, .button {
 .button.secondary { background: var(--surface); color: var(--text); border: 1px solid var(--border); }
 .or { display: flex; align-items: center; gap: .75rem; margin: 1.25rem 0 .5rem; color: var(--muted); font-size: .85rem; }
 .or::before, .or::after { content: ''; flex: 1; height: 1px; background: var(--border); }
-.error { padding: .6rem .8rem; border-radius: 12px; background: var(--danger-soft); color: var(--danger); text-align: left; }
+.error { padding: .6rem .8rem; border-radius: 12px; background: var(--danger-soft); color: var(--danger); text-align: start; }
 .qr { width: min(15rem, 80%); margin: 1rem auto; padding: .75rem; background: #fff; border-radius: 16px; }
 .qr svg { display: block; width: 100%; height: auto; }
 code { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; word-break: break-all; }
 .hint { font-size: .85rem; }
-ol.codes { columns: 2; text-align: left; padding-left: 1.6rem; margin: 1rem 0; line-height: 2; }
+ol.codes { columns: 2; text-align: left; padding-left: 1.6rem; direction: ltr; margin: 1rem 0; line-height: 2; }
 ol.codes code { font-size: 1rem; color: var(--text); }
 main a:not(.button) { color: var(--accent); text-underline-offset: 3px; }

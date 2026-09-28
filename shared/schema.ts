@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { isIsoDate } from './dates.ts';
+import { LANGUAGES } from './i18n/index.ts';
 
 export const BLEEDING = ['spotting', 'light', 'medium', 'heavy'] as const;
 export const DISTURBANCES = ['sleep', 'time', 'alcohol', 'illness', 'travel', 'stress', 'medication'] as const;
@@ -81,6 +82,8 @@ export const NotificationSettingsSchema = z
   .object({
     /** IANA time zone of the user's device; reminders are sent in local time. */
     timezone: z.string().max(64).refine(isTimeZone, 'Unknown time zone').default('UTC'),
+    /** Language of the user's device, for reminders when `language` is "auto". */
+    language: z.enum(LANGUAGES).default('en'),
     /** Generic wording on the lock screen ("A reminder from Ebbwell"). */
     discreet: z.boolean().default(true),
     /** Time of day for period / fertile-window / partner reminders. */
@@ -101,6 +104,8 @@ export const SettingsSchema = z
     /** Pregnancy / postpartum / pause: no predictions. */
     paused: z.boolean().default(false),
     temperatureUnit: z.enum(['C', 'F']).default('C'),
+    /** Interface language; "auto" follows the device. */
+    language: z.enum(['auto', ...LANGUAGES]).default('auto'),
     track: z
       .object({
         temperature: z.boolean().default(true),

@@ -1,14 +1,14 @@
 import { useEffect, useState } from 'react';
 import { startRegistration } from '@simplewebauthn/browser';
-import { SCOPE_LABELS, SHARE_SCOPES, type ShareScope } from '../../../shared/partner.ts';
+import { SHARE_SCOPES, type ShareScope } from '../../../shared/partner.ts';
 import type { NotificationSettings } from '../../../shared/schema.ts';
 import { ApiError, LOCKED_EVENT, api, type LockStatus, type SharesInfo } from '../api.ts';
 import { hasDeviceBiometric, isIos, isStandalone, pushSupported, secureContext, setDeviceBiometric, urlBase64ToUint8Array } from '../device.ts';
+import { fmtDay } from '../format.ts';
+import { useT } from '../i18n.tsx';
 import { navigate } from '../router.ts';
 import { useStore } from '../store.tsx';
 import { Switch, useToast } from '../ui.tsx';
-
-const fmtDay = (ms: number) => new Date(ms).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
 
 // ------------------------------------------------------------------ notifications
 
@@ -20,6 +20,8 @@ async function currentSubscription(): Promise<PushSubscription | null> {
 
 export function NotificationsSection() {
   const { settings, saveSettings } = useStore();
+  const t = useT();
+  const x = t.notifications;
   const toast = useToast();
   const n = settings.notifications;
   const [subscribed, setSubscribed] = useState<boolean | null>(null);
@@ -37,7 +39,7 @@ export function NotificationsSection() {
     try {
       await saveSettings({ notifications: { ...n, ...patch } });
     } catch (e) {
-      toast(`Could not save: ${(e as Error).message}`);
+      toast(t.common.couldNotSave((e as Error).message));
     }
   };
 
@@ -47,7 +49,7 @@ export function NotificationsSection() {
       // Must run from a tap: iOS only allows the permission prompt on a user gesture.
       const permission = await Notification.requestPermission();
       if (permission !== 'granted') {
-        toast('Notifications are blocked in your browser settings');
+        toast(x.blocked);
         return;
       }
       const { publicKey } = await api.push.info();
@@ -57,9 +59,9 @@ export function NotificationsSection() {
         (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(publicKey) }));
       await api.push.subscribe(sub.toJSON());
       setSubscribed(true);
-      toast('Notifications enabled on this device');
+      toast(x.enabled);
     } catch (e) {
-      toast(`Could not enable notifications: ${(e as Error).message}`);
+      toast(x.couldNotEnable((e as Error).message));
     } finally {
       setBusy(false);
     }
@@ -81,102 +83,68 @@ export function NotificationsSection() {
 
   return (
     <section className="card stack">
-      <h3>Reminders</h3>
+      <h3>{x.title}</h3>
       {!supported || needsInstall ? (
-        <p className="small muted">
-          {!secureContext()
-            ? 'Notifications need the HTTPS address of Ebbwell (they are not available over plain HTTP on the local network).'
-            : needsInstall
-              ? 'On iPhone and iPad, notifications work once Ebbwell is on your Home Screen: Share → Add to Home Screen, then open it from the icon.'
-              : "This browser doesn't support push notifications."}
-        </p>
+        <p className="small muted">{!secureContext() ? x.needsHttps : needsInstall ? x.needsInstall : x.unsupported}</p>
       ) : (
         <div className="row">
           {subscribed ? (
             <>
-              <span className="chip high">On for this device</span>
+              <span className="chip high">{x.onForDevice}</span>
               <span style={{ flex: 1 }} />
-              <button className="btn" disabled={busy} onClick={async () => toast(`Sent to ${(await api.push.test()).delivered} device(s)`)}>
-                Test
+              <button className="btn" disabled={busy} onClick={async () => toast(x.sent((await api.push.test()).delivered))}>
+                {x.test}
               </button>
               <button className="btn" disabled={busy} onClick={disable}>
-                Turn off
+                {t.common.turnOff}
               </button>
             </>
           ) : (
             <button className="btn primary block" disabled={busy || subscribed === null} onClick={enable}>
-              Enable notifications on this device
+              {x.enable}
             </button>
           )}
         </div>
       )}
 
       <div className="divider" />
-      <TimedSwitch
-        label="Morning temperature"
-        hint="Only if today's temperature isn't logged yet."
-        value={n.temperature}
-        onChange={(temperature) => update({ temperature })}
-      />
-      <TimedSwitch
-        label="Evening check-in"
-        hint="Mucus, symptoms and mood — skipped if already logged."
-        value={n.log}
-        onChange={(log) => update({ log })}
-      />
-      <Switch label="Period coming" checked={n.period.enabled} onChange={(enabled) => update({ period: { ...n.period, enabled } })} />
-      {n.period.enabled && (
-        <DaysBefore value={n.period.daysBefore} onChange={(daysBefore) => update({ period: { ...n.period, daysBefore } })} />
-      )}
-      {settings.goal !== 'track' && (
-        <Switch
-          label="Fertile window starting"
-          checked={n.fertile.enabled}
-          onChange={(enabled) => update({ fertile: { enabled } })}
-        />
-      )}
-      <Switch
-        label="Partner's period coming"
-        hint="For cycles shared with you."
-        checked={n.partner.enabled}
-        onChange={(enabled) => update({ partner: { ...n.partner, enabled } })}
-      />
-      {n.partner.enabled && (
-        <DaysBefore value={n.partner.daysBefore} onChange={(daysBefore) => update({ partner: { ...n.partner, daysBefore } })} />
-      )}
+      <TimedSwitch label={x.morning} hint={x.morningHint} value={n.temperature} onChange={(temperature) => update({ temperature })} />
+      <TimedSwitch label={x.evening} hint={x.eveningHint} value={n.log} onChange={(log) => update({ log })} />
+      <Switch label={x.period} checked={n.period.enabled} onChange={(enabled) => update({ period: { ...n.period, enabled } })} />
+      {n.period.enabled && <DaysBefore value={n.period.daysBefore} onChange={(daysBefore) => update({ period: { ...n.period, daysBefore } })} />}
+      {settings.goal !== 'track' && <Switch label={x.fertile} checked={n.fertile.enabled} onChange={(enabled) => update({ fertile: { enabled } })} />}
+      <Switch label={x.partner} hint={x.partnerHint} checked={n.partner.enabled} onChange={(enabled) => update({ partner: { ...n.partner, enabled } })} />
+      {n.partner.enabled && <DaysBefore value={n.partner.daysBefore} onChange={(daysBefore) => update({ partner: { ...n.partner, daysBefore } })} />}
       <label className="field">
-        <span>Time for period and fertility reminders</span>
+        <span>{x.time}</span>
         <input type="time" value={n.time} onChange={(e) => e.target.value && update({ time: e.target.value })} />
       </label>
-      <Switch
-        label="Discreet wording"
-        hint='Lock-screen text stays generic ("A gentle reminder from Ebbwell").'
-        checked={n.discreet}
-        onChange={(discreet) => update({ discreet })}
-      />
-      <p className="hint">Times use this device's time zone ({n.timezone}).</p>
+      <Switch label={x.discreet} hint={x.discreetHint} checked={n.discreet} onChange={(discreet) => update({ discreet })} />
+      <p className="hint">{x.timezone(n.timezone)}</p>
     </section>
   );
 }
 
 function TimedSwitch(props: { label: string; hint: string; value: { enabled: boolean; time: string }; onChange: (v: { enabled: boolean; time: string }) => void }) {
+  const x = useT().notifications;
   const { value } = props;
   return (
     <>
       <Switch label={props.label} hint={props.hint} checked={value.enabled} onChange={(enabled) => props.onChange({ ...value, enabled })} />
       {value.enabled && (
-        <input type="time" aria-label={`${props.label} time`} value={value.time} onChange={(e) => e.target.value && props.onChange({ ...value, time: e.target.value })} />
+        <input type="time" aria-label={x.timeOf(props.label)} value={value.time} onChange={(e) => e.target.value && props.onChange({ ...value, time: e.target.value })} />
       )}
     </>
   );
 }
 
 function DaysBefore({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  const x = useT().notifications;
   return (
-    <select aria-label="Days before" value={value} onChange={(e) => onChange(Number(e.target.value))}>
+    <select aria-label={x.daysBefore} value={value} onChange={(e) => onChange(Number(e.target.value))}>
       {[0, 1, 2, 3, 4, 5, 7].map((d) => (
         <option key={d} value={d}>
-          {d === 0 ? 'On the expected day' : `${d} day${d > 1 ? 's' : ''} before`}
+          {d === 0 ? x.onTheDay : x.before(d)}
         </option>
       ))}
     </select>
@@ -185,16 +153,12 @@ function DaysBefore({ value, onChange }: { value: number; onChange: (v: number) 
 
 // ------------------------------------------------------------------ app lock
 
-const TIMEOUTS: { value: number; label: string }[] = [
-  { value: 0, label: 'When I leave the app' },
-  { value: 60, label: 'After 1 minute' },
-  { value: 300, label: 'After 5 minutes' },
-  { value: 900, label: 'After 15 minutes' },
-  { value: 3600, label: 'After 1 hour' },
-];
+const TIMEOUTS = [0, 60, 300, 900, 3600];
 
 export function LockSection() {
   const { refreshLock } = useStore();
+  const t = useT();
+  const x = t.lock;
   const toast = useToast();
   const [status, setStatus] = useState<LockStatus | null>(null);
   const [pin, setPin] = useState('');
@@ -223,14 +187,14 @@ export function LockSection() {
     setBusy(true);
     try {
       await api.lock.set(pin, timeout, needsCurrent ? currentPin : undefined);
-      toast(status?.enabled ? 'PIN changed' : 'App lock enabled');
+      toast(status?.enabled ? x.pinChanged : x.enabled);
       setPin('');
       setConfirmPin('');
       setCurrentPin('');
       setEditing(false);
       await load();
     } catch (e) {
-      toast(e instanceof ApiError && e.status === 403 ? 'Current PIN is wrong' : `Could not save: ${(e as Error).message}`);
+      toast(e instanceof ApiError && e.status === 403 ? x.currentWrong : t.common.couldNotSave((e as Error).message));
     } finally {
       setBusy(false);
     }
@@ -241,90 +205,79 @@ export function LockSection() {
     try {
       const options = await api.lock.registerOptions();
       const response = await startRegistration({ optionsJSON: options });
-      const name = /iPhone|iPad/.test(navigator.userAgent) ? 'iPhone / iPad' : /Android/.test(navigator.userAgent) ? 'Android' : /Mac/.test(navigator.userAgent) ? 'Mac' : 'This device';
+      const name = /iPhone|iPad/.test(navigator.userAgent) ? 'iPhone / iPad' : /Android/.test(navigator.userAgent) ? 'Android' : /Mac/.test(navigator.userAgent) ? 'Mac' : x.thisDevice;
       await api.lock.registerVerify(response, name);
       setDeviceBiometric(true);
-      toast('Biometric unlock enabled on this device');
+      toast(x.biometricEnabled);
       await load();
     } catch (e) {
-      toast(`Could not add biometrics: ${(e as Error).message}`);
+      toast(x.couldNotAddBiometric((e as Error).message));
     } finally {
       setBusy(false);
     }
   };
 
+  const timeoutSelect = (onChange: (v: number) => void) => (
+    <label className="field">
+      <span>{x.lock}</span>
+      <select value={timeout} onChange={(e) => onChange(Number(e.target.value))}>
+        {TIMEOUTS.map((v) => (
+          <option key={v} value={v}>
+            {x.timeouts[v]}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+
   const pinForm = (
     <div className="stack">
       {needsCurrent && (
         <label className="field">
-          <span>Current PIN</span>
+          <span>{x.currentPin}</span>
           <input type="password" inputMode="numeric" autoComplete="off" maxLength={8} value={currentPin} onChange={(e) => setCurrentPin(e.target.value.replace(/\D/g, ''))} />
         </label>
       )}
       <div className="grid-2">
         <label className="field">
-          <span>New PIN (4–8 digits)</span>
+          <span>{x.newPin}</span>
           <input type="password" inputMode="numeric" autoComplete="new-password" maxLength={8} value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))} />
         </label>
         <label className="field">
-          <span>Repeat PIN</span>
+          <span>{x.repeatPin}</span>
           <input type="password" inputMode="numeric" autoComplete="new-password" maxLength={8} value={confirmPin} onChange={(e) => setConfirmPin(e.target.value.replace(/\D/g, ''))} />
         </label>
       </div>
       <button className="btn primary" disabled={busy || !validPin || (needsCurrent && currentPin.length < 4)} onClick={savePin}>
-        {status?.enabled ? 'Change PIN' : 'Turn on app lock'}
+        {status?.enabled ? x.changePin : x.turnOn}
       </button>
     </div>
   );
 
   return (
     <section className="card stack" id="lock">
-      <h3>App lock</h3>
+      <h3>{x.title}</h3>
       {!status ? null : !status.enabled ? (
         <>
-          <p className="small muted">
-            Ask for a PIN (and Face ID / fingerprint) when opening Ebbwell, on top of your sign-in. Five wrong attempts sign the device out.
-          </p>
-          <label className="field">
-            <span>Lock</span>
-            <select value={timeout} onChange={(e) => setTimeoutSec(Number(e.target.value))}>
-              {TIMEOUTS.map((t) => (
-                <option key={t.value} value={t.value}>
-                  {t.label}
-                </option>
-              ))}
-            </select>
-          </label>
+          <p className="small muted">{x.intro}</p>
+          {timeoutSelect(setTimeoutSec)}
           {pinForm}
         </>
       ) : (
         <>
-          {status.canReset && <p className="small chip high">You just signed in again — you can set a new PIN below.</p>}
-          <label className="field">
-            <span>Lock</span>
-            <select
-              value={timeout}
-              onChange={async (e) => {
-                const v = Number(e.target.value);
-                setTimeoutSec(v);
-                await api.lock.setTimeout(v);
-                await refreshLock();
-              }}
-            >
-              {TIMEOUTS.map((t) => (
-                <option key={t.value} value={t.value}>
-                  {t.label}
-                </option>
-              ))}
-            </select>
-          </label>
+          {status.canReset && <p className="small chip high">{x.justSignedIn}</p>}
+          {timeoutSelect(async (v) => {
+            setTimeoutSec(v);
+            await api.lock.setTimeout(v);
+            await refreshLock();
+          })}
 
           <div className="list">
             {status.credentials.map((c) => (
               <div key={c.id} className="spread">
                 <div>
-                  <div>Biometrics · {c.name}</div>
-                  <div className="small muted">Added {fmtDay(c.createdAt)}</div>
+                  <div>{x.biometrics(c.name)}</div>
+                  <div className="small muted">{x.added(fmtDay(c.createdAt))}</div>
                 </div>
                 <button
                   className="btn"
@@ -334,14 +287,14 @@ export function LockSection() {
                     await load();
                   }}
                 >
-                  Remove
+                  {t.common.remove}
                 </button>
               </div>
             ))}
           </div>
           {secureContext() && 'credentials' in navigator && !deviceHasBiometric && (
             <button className="btn" disabled={busy} onClick={addBiometric}>
-              Use Face ID / fingerprint on this device
+              {x.useBiometrics}
             </button>
           )}
 
@@ -349,7 +302,7 @@ export function LockSection() {
           <div className="grid-2">
             {!editing && !status.canReset && (
               <button className="btn" onClick={() => setEditing(true)}>
-                Change PIN
+                {x.changePin}
               </button>
             )}
             <button
@@ -359,14 +312,14 @@ export function LockSection() {
                 window.dispatchEvent(new Event(LOCKED_EVENT));
               }}
             >
-              Lock now
+              {x.lockNow}
             </button>
           </div>
           <details>
-            <summary className="small">Turn off app lock</summary>
+            <summary className="small">{x.turnOffTitle}</summary>
             <div className="stack" style={{ marginTop: 8 }}>
               <label className="field">
-                <span>PIN</span>
+                <span>{x.pin}</span>
                 <input type="password" inputMode="numeric" maxLength={8} value={currentPin} onChange={(e) => setCurrentPin(e.target.value.replace(/\D/g, ''))} />
               </label>
               <button
@@ -377,14 +330,14 @@ export function LockSection() {
                     await api.lock.remove(currentPin);
                     setDeviceBiometric(false);
                     setCurrentPin('');
-                    toast('App lock turned off');
+                    toast(x.turnedOff);
                     await load();
                   } catch {
-                    toast('Wrong PIN');
+                    toast(x.wrongPin);
                   }
                 }}
               >
-                Turn off app lock
+                {x.turnOffTitle}
               </button>
             </div>
           </details>
@@ -397,13 +350,14 @@ export function LockSection() {
 // ------------------------------------------------------------------ sharing
 
 function ScopePicker({ value, onChange }: { value: ShareScope[]; onChange: (v: ShareScope[]) => void }) {
+  const t = useT();
   return (
     <div className="stack">
       <label className="check">
         <input type="checkbox" checked disabled />
         <span>
-          Period predictions & cycle day
-          <div className="hint">Always included.</div>
+          {t.sharing.always}
+          <div className="hint">{t.sharing.alwaysHint}</div>
         </span>
       </label>
       {SHARE_SCOPES.map((s) => (
@@ -411,11 +365,11 @@ function ScopePicker({ value, onChange }: { value: ShareScope[]; onChange: (v: S
           <input
             type="checkbox"
             checked={value.includes(s)}
-            onChange={(e) => onChange(e.target.checked ? [...value, s] : value.filter((x) => x !== s))}
+            onChange={(e) => onChange(e.target.checked ? [...value, s] : value.filter((v) => v !== s))}
           />
           <span>
-            {SCOPE_LABELS[s].title}
-            <div className="hint">{SCOPE_LABELS[s].body}</div>
+            {t.scopes[s].title}
+            <div className="hint">{t.scopes[s].body}</div>
           </span>
         </label>
       ))}
@@ -424,6 +378,8 @@ function ScopePicker({ value, onChange }: { value: ShareScope[]; onChange: (v: S
 }
 
 export function SharingSection() {
+  const t = useT();
+  const x = t.sharing;
   const toast = useToast();
   const [info, setInfo] = useState<SharesInfo | null>(null);
   const [scopes, setScopes] = useState<ShareScope[]>([]);
@@ -439,36 +395,34 @@ export function SharingSection() {
       setInvite(res);
       void load();
     } catch (e) {
-      toast(e instanceof ApiError && e.status === 409 ? 'Too many pending invites — revoke one first' : 'Could not create the invite');
+      toast(e instanceof ApiError && e.status === 409 ? x.tooMany : x.couldNotCreate);
     }
   };
 
   const shareLink = async (url: string) => {
     if (navigator.share) {
       try {
-        await navigator.share({ title: 'Ebbwell', text: 'Join me on Ebbwell', url });
+        await navigator.share({ title: 'Ebbwell', text: x.shareText, url });
         return;
       } catch {
         /* cancelled: fall back to copying */
       }
     }
     await navigator.clipboard.writeText(url);
-    toast('Link copied');
+    toast(x.linkCopied);
   };
 
   return (
     <section className="card stack">
-      <h3>Sharing with a partner</h3>
-      <p className="small muted">
-        Your partner signs in to this Ebbwell with their own account and sees a read-only view. Notes and intimate details are never shared.
-      </p>
+      <h3>{x.title}</h3>
+      <p className="small muted">{x.intro}</p>
 
       {info?.asOwner.length ? (
         <div className="list">
           {info.asOwner.map((s) => (
             <details key={s.id}>
               <summary>
-                {s.name} <span className="small muted">· since {fmtDay(s.createdAt)}</span>
+                {s.name} <span className="small muted">· {x.since(fmtDay(s.createdAt))}</span>
               </summary>
               <div className="stack" style={{ marginTop: 8 }}>
                 <ScopePicker
@@ -481,12 +435,12 @@ export function SharingSection() {
                 <button
                   className="btn danger"
                   onClick={async () => {
-                    if (!confirm(`Stop sharing with ${s.name}?`)) return;
+                    if (!confirm(x.stopConfirm(s.name))) return;
                     await api.shares.end(s.id);
                     void load();
                   }}
                 >
-                  Stop sharing
+                  {x.stop}
                 </button>
               </div>
             </details>
@@ -496,7 +450,7 @@ export function SharingSection() {
 
       {info?.invites.map((i) => (
         <div key={i.id} className="spread small">
-          <span>Pending invite · expires {fmtDay(i.expiresAt)}</span>
+          <span>{x.pending(fmtDay(i.expiresAt))}</span>
           <button
             className="btn"
             style={{ minHeight: 32 }}
@@ -506,21 +460,23 @@ export function SharingSection() {
               void load();
             }}
           >
-            Revoke
+            {x.revoke}
           </button>
         </div>
       ))}
 
       {invite ? (
         <div className="card tone-ovulation stack">
-          <strong>Invite link (single use, valid 7 days)</strong>
-          <code className="invite-url">{invite.url}</code>
+          <strong>{x.inviteTitle}</strong>
+          <code className="invite-url" dir="ltr">
+            {invite.url}
+          </code>
           <div className="grid-2">
             <button className="btn primary" onClick={() => shareLink(invite.url)}>
-              Share link
+              {x.shareLink}
             </button>
             <button className="btn" onClick={() => setInvite(null)}>
-              Done
+              {t.common.done}
             </button>
           </div>
         </div>
@@ -528,25 +484,25 @@ export function SharingSection() {
         <div className="stack">
           <ScopePicker value={scopes} onChange={setScopes} />
           <button className="btn primary" onClick={create}>
-            Create invite link
+            {x.createInvite}
           </button>
         </div>
       ) : (
         <button className="btn" onClick={() => setInviting(true)}>
-          Invite a partner
+          {x.invite}
         </button>
       )}
 
       {info?.asPartner.length ? (
         <>
           <div className="divider" />
-          <strong className="small">Shared with you</strong>
+          <strong className="small">{x.sharedWithYou}</strong>
           <div className="list">
             {info.asPartner.map((s) => (
               <div key={s.id} className="spread">
-                <span>{s.name}'s cycle</span>
+                <span>{x.cycleOf(s.name)}</span>
                 <button className="btn" style={{ minHeight: 34 }} onClick={() => navigate(`/partner/${s.id}`)}>
-                  View
+                  {x.view}
                 </button>
               </div>
             ))}

@@ -904,5 +904,10 @@ details summary {
 
 ul.small {
   margin: 0;
-  padding-left: 1.2rem;
+  padding-inline-start: 1.2rem;
+}
+
+/* Right-to-left languages: arrows point the other way. */
+[dir='rtl'] .dir-icon {
+  transform: scaleX(-1);
 }

@@ -37,6 +37,7 @@ Calendar-only period apps predict the ovulation day correctly only about 8–21%
 | Accounts | Single sign-on (OIDC + PKCE) and/or local accounts. You choose where passwords are accepted: nowhere, local network only (never through the public domain), or everywhere. Optional or required two-factor authentication (authenticator app + recovery codes). Admin panel: create/reset/disable accounts, reset 2FA; admins never see cycle data |
 | Security | Hashed server-side sessions, device list, CSRF protection, rate limiting and account lockout, audit log, key rotation, daily encrypted backups |
 | Platforms | Installable PWA (iOS 16.4+, Android, desktop), light/dark, offline app shell |
+| Languages | English, French, German and Arabic (right-to-left), chosen per user in Settings or following the device; sign-in pages and reminders too |
 
 > Ebbwell is a journal, **not a medical device and not a contraceptive**.
 
@@ -80,6 +81,7 @@ The server is TypeScript run directly by Node 24 (type stripping), with no build
 
 ```
 shared/   cycle engine and partner view (pure TS, shared by browser and server) + zod schemas
+          + translations (shared/i18n: en.ts is the reference, the compiler checks the others)
 server/   Fastify API: OIDC, sessions, app lock, Web Push, sharing, encrypted SQLite store, backups
 web/      React PWA + service worker
 test/     vitest suites

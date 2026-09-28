@@ -119,7 +119,7 @@ function browser(remoteAddress = lan.remoteAddress) {
 async function enrol(b: ReturnType<typeof browser>, password?: string) {
   const page = await b.send({ method: 'GET', url: '/auth/2fa/setup' });
   expect(page.body).toContain('<svg');
-  const secret = /<code>([A-Z2-7 ]+)<\/code>/.exec(page.body)![1]!.replace(/ /g, '');
+  const secret = /<code[^>]*>([A-Z2-7 ]+)<\/code>/.exec(page.body)![1]!.replace(/ /g, '');
   const code = hotp(base32Decode(secret), currentStep());
   const res = await b.form('/auth/2fa/setup', { code, ...(password ? { password } : {}) }, '/auth/2fa/setup');
   const codes = [...res.body.matchAll(/<li><code>([a-z0-9-]+)<\/code><\/li>/g)].map((m) => m[1]!);

@@ -3,12 +3,14 @@ import { addDays, diffDays } from '../../../shared/dates.ts';
 import type { Analysis, NfpStatus } from '../../../shared/engine.ts';
 import { navigate } from '../router.ts';
 import { useStore } from '../store.tsx';
-import { CONFIDENCE, METHOD, WARNINGS, fmtDate, fmtLong, fmtRange, fmtTemp, relDays } from '../format.ts';
+import { fmtDate, fmtLong, fmtRange, fmtTemp, relDays } from '../format.ts';
+import { useT } from '../i18n.tsx';
 import { Icon, useToast } from '../ui.tsx';
 import { PartnerCards } from './Partner.tsx';
 
 export function Today() {
   const { analysis, today, days, me, settings } = useStore();
+  const t = useT();
   const current = analysis.current;
 
   return (
@@ -16,7 +18,7 @@ export function Today() {
       <header className="page-header">
         <div>
           <h1>{fmtLong(today)}</h1>
-          <div className="sub">Hi {me.name.split(' ')[0]}</div>
+          <div className="sub">{t.today.hi(me.name.split(' ')[0]!)}</div>
         </div>
       </header>
 
@@ -26,8 +28,8 @@ export function Today() {
           <Welcome />
         ) : settings.paused ? (
           <div className="card">
-            <h2>Predictions paused</h2>
-            <p className="muted">Pregnancy / pause mode is on. You can keep logging; turn it off in Settings to resume predictions.</p>
+            <h2>{t.today.pausedTitle}</h2>
+            <p className="muted">{t.today.pausedBody}</p>
           </div>
         ) : current ? (
           <>
@@ -43,17 +45,15 @@ export function Today() {
         {analysis.cycles.length > 0 && !days.has(today) && !current?.inPeriod && <PeriodStartButton />}
 
         {analysis.warnings
-          .filter((w) => WARNINGS[w])
+          .filter((w) => t.warnings[w])
           .map((w) => (
             <div className="card tone-warn" key={w}>
-              <h2>{WARNINGS[w]!.title}</h2>
-              <p className="small">{WARNINGS[w]!.body}</p>
+              <h2>{t.warnings[w]!.title}</h2>
+              <p className="small">{t.warnings[w]!.body}</p>
             </div>
           ))}
 
-        <p className="hint center">
-          Ebbwell is a journal, not a medical device or contraceptive. Predictions are estimates.
-        </p>
+        <p className="hint center">{t.today.disclaimer}</p>
       </div>
     </>
   );
@@ -62,6 +62,7 @@ export function Today() {
 // ------------------------------------------------------------------ ring
 
 function Ring({ analysis, today }: { analysis: Analysis; today: string }) {
+  const tr = useT().today;
   const current = analysis.current!;
   const cur = analysis.predictions[0]!;
   const next = analysis.predictions[1];
@@ -88,31 +89,31 @@ function Ring({ analysis, today }: { analysis: Analysis; today: string }) {
   );
   const angle = (i: number) => ((i + 0.5) / length) * 2 * Math.PI - Math.PI / 2;
   const at = (i: number) => ({ x: 50 + R * Math.cos(angle(i)), y: 50 + R * Math.sin(angle(i)) });
-  const t = at(idx(today));
+  const pos = at(idx(today));
   const ov = at(idx(cur.ovulation.date));
   const confirmed = analysis.cycles.at(-1)?.ovulation?.confirmed;
 
   const phase = {
-    period: { label: 'Period', color: 'var(--period)' },
-    follicular: { label: 'Before fertile window', color: 'var(--text)' },
-    fertile: { label: 'Fertile window', color: 'var(--fertile)' },
-    'peak-fertile': { label: 'Peak fertility', color: 'var(--fertile)' },
-    luteal: { label: confirmed ? 'After ovulation' : 'Likely after ovulation', color: 'var(--ovulation)' },
-    late: { label: `Period ${current.daysLate} day${current.daysLate > 1 ? 's' : ''} late`, color: 'var(--warn)' },
+    period: { label: tr.phase.period, color: 'var(--period)' },
+    follicular: { label: tr.phase.follicular, color: 'var(--text)' },
+    fertile: { label: tr.phase.fertile, color: 'var(--fertile)' },
+    'peak-fertile': { label: tr.phase.peakFertile, color: 'var(--fertile)' },
+    luteal: { label: confirmed ? tr.phase.lutealConfirmed : tr.phase.lutealLikely, color: 'var(--ovulation)' },
+    late: { label: tr.phase.late(current.daysLate), color: 'var(--warn)' },
   }[current.phase];
 
   return (
-    <div className="hero" role="img" aria-label={`Cycle day ${current.cycleDay}. ${phase.label}.`}>
+    <div className="hero" role="img" aria-label={tr.ringLabel(current.cycleDay, phase.label)}>
       <svg viewBox="0 0 100 100" aria-hidden="true">
         {arc(0, length, 'var(--surface-2)')}
         {arc(idx(cur.fertileStart), idx(cur.fertileEnd) + 1, 'var(--fertile-soft)')}
         {arc(idx(cur.peakFertileStart), idx(cur.peakFertileEnd) + 1, 'var(--fertile)')}
         {arc(0, idx(cur.periodEnd) + 1, 'var(--period)')}
         <circle cx={ov.x} cy={ov.y} r="3.2" fill="var(--surface)" stroke="var(--ovulation)" strokeWidth="1.6" strokeDasharray={confirmed ? undefined : '1.5 1.2'} />
-        <circle cx={t.x} cy={t.y} r="5" fill="var(--surface)" stroke="var(--text)" strokeWidth="2" />
+        <circle cx={pos.x} cy={pos.y} r="5" fill="var(--surface)" stroke="var(--text)" strokeWidth="2" />
       </svg>
       <div className="inner">
-        <span className="day">Cycle day</span>
+        <span className="day">{tr.cycleDay}</span>
         <span className="big">{current.cycleDay}</span>
         <span className="phase" style={{ color: phase.color }}>
           {phase.label}
@@ -125,6 +126,7 @@ function Ring({ analysis, today }: { analysis: Analysis; today: string }) {
 // ------------------------------------------------------------------ cards
 
 function NextCards({ analysis, today }: { analysis: Analysis; today: string }) {
+  const t = useT();
   const cur = analysis.predictions[0]!;
   const next = analysis.predictions[1]!;
   const cycle = analysis.cycles.at(-1)!;
@@ -133,7 +135,7 @@ function NextCards({ analysis, today }: { analysis: Analysis; today: string }) {
   return (
     <div className="grid-2">
       <div className="card tone-period">
-        <h3>Next period</h3>
+        <h3>{t.today.nextPeriod}</h3>
         <div className="stat">
           <div className="value">{fmtDate(next.start.date)}</div>
           <div className="label">
@@ -141,28 +143,26 @@ function NextCards({ analysis, today }: { analysis: Analysis; today: string }) {
           </div>
         </div>
         <p>
-          <span className={`chip ${analysis.confidence}`}>{CONFIDENCE[analysis.confidence]}</span>
+          <span className={`chip ${analysis.confidence}`}>{t.confidence[analysis.confidence]}</span>
         </p>
       </div>
       <div className="card tone-ovulation">
-        <h3>Ovulation</h3>
+        <h3>{t.today.ovulation}</h3>
         {cycle.ovulation?.confirmed ? (
           <div className="stat">
             <div className="value">{fmtDate(cycle.ovulation.date)}</div>
-            <div className="label">{METHOD[cycle.ovulation.method]}</div>
+            <div className="label">{t.method[cycle.ovulation.method]}</div>
           </div>
         ) : (
           <div className="stat">
-            <div className="value">{ovPast ? 'Likely passed' : fmtDate(cur.ovulation.date)}</div>
+            <div className="value">{ovPast ? t.today.likelyPassed : fmtDate(cur.ovulation.date)}</div>
             <div className="label">
-              {ovPast ? `expected ${fmtRange(cur.ovulation)}` : `${relDays(today, cur.ovulation.date)} · ${fmtRange(cur.ovulation)}`}
-              {cycle.ovulation && ` · ${METHOD[cycle.ovulation.method]}`}
+              {ovPast ? t.today.expected(fmtRange(cur.ovulation)) : `${relDays(today, cur.ovulation.date)} · ${fmtRange(cur.ovulation)}`}
+              {cycle.ovulation && ` · ${t.method[cycle.ovulation.method]}`}
             </div>
           </div>
         )}
-        <p className="small muted">
-          Fertile {fmtDate(cur.fertileStart)} – {fmtDate(cur.fertileEnd)}
-        </p>
+        <p className="small muted">{t.today.fertile(fmtDate(cur.fertileStart), fmtDate(cur.fertileEnd))}</p>
       </div>
     </div>
   );
@@ -170,36 +170,25 @@ function NextCards({ analysis, today }: { analysis: Analysis; today: string }) {
 
 function Alerts({ analysis }: { analysis: Analysis }) {
   const { settings } = useStore();
+  const t = useT().today.alerts;
   const c = analysis.current!;
   const out: { tone: string; title: string; body: string }[] = [];
   if (c.positivePregnancyTest) {
-    out.push({
-      tone: 'tone-ovulation',
-      title: 'Positive pregnancy test logged',
-      body: `On ${fmtDate(c.positivePregnancyTest)}. You can turn on pregnancy / pause mode in Settings to stop predictions.`,
-    });
+    out.push({ tone: 'tone-ovulation', title: t.positiveTestTitle, body: t.positiveTestBody(fmtDate(c.positivePregnancyTest)) });
   } else if (c.suggestPregnancyTest) {
-    out.push({
-      tone: 'tone-warn',
-      title: 'Consider a pregnancy test',
-      body: 'Your period is late and unprotected sex was logged during the fertile window.',
-    });
+    out.push({ tone: 'tone-warn', title: t.considerTestTitle, body: t.considerTestBody });
   } else if (c.phase === 'late') {
-    out.push({
-      tone: 'tone-warn',
-      title: `Period ${c.daysLate} day${c.daysLate > 1 ? 's' : ''} later than expected`,
-      body: 'Stress, illness, travel or a later ovulation can delay a period. A temperature that stays high for 18+ days after ovulation can indicate pregnancy.',
-    });
+    out.push({ tone: 'tone-warn', title: t.lateTitle(c.daysLate), body: t.lateBody });
   }
   if (c.lhSurgeToday) {
-    out.push({ tone: 'tone-fertile', title: 'LH surge today', body: 'Ovulation usually follows within 24–36 hours.' });
+    out.push({ tone: 'tone-fertile', title: t.lhTitle, body: t.lhBody });
   }
   const pend = c.temperaturePending;
   if (pend && settings.track.temperature) {
     out.push({
       tone: 'tone-ovulation',
-      title: 'Watching for a temperature shift',
-      body: `${pend.highDates.length} higher reading${pend.highDates.length > 1 ? 's' : ''} above the cover line (${fmtTemp(pend.coverline, settings.temperatureUnit)}) so far. Keep measuring to confirm ovulation.`,
+      title: t.watchingTitle,
+      body: t.watchingBody(pend.highDates.length, fmtTemp(pend.coverline, settings.temperatureUnit)),
     });
   }
   return (
@@ -214,49 +203,38 @@ function Alerts({ analysis }: { analysis: Analysis }) {
   );
 }
 
-const NFP_REASON: Record<string, string> = {
-  'not-enabled': 'Enable the Sensiplan evaluation in Settings to see it.',
-  'needs-temperature-and-mucus': 'Sensiplan needs both temperature and mucus tracking.',
-  'no-cycle': 'Log your period first.',
-  paused: 'Paused mode is on.',
-  'double-check-pending': 'Waiting for both temperature and mucus to confirm.',
-  'evaluation-in-progress': 'Post-ovulatory evaluation not complete: consider yourself fertile.',
-  'no-shift-previous-cycle': 'No temperature shift was confirmed in the previous cycle, so the 5-day rule does not apply.',
-  'mucus-observed': 'A mucus sign was observed: the fertile phase has started.',
-  'pre-ovulatory-phase-ended': 'The pre-ovulatory infertile days are over.',
-};
-
 function NfpCard({ status }: { status: NfpStatus }) {
+  const t = useT().today.nfp;
   let tone = 'tone-fertile';
   let title: string;
   let body: string;
   switch (status.kind) {
     case 'unavailable':
       tone = '';
-      title = 'Sensiplan evaluation off';
-      body = NFP_REASON[status.reason] ?? status.reason;
+      title = t.off;
+      body = t.reasons[status.reason] ?? status.reason;
       break;
     case 'infertile-pre':
       tone = 'tone-ovulation';
-      title = `Infertile until the end of ${fmtDate(status.lastDay)}`;
-      body = `Pre-ovulatory phase, ${status.rule} rule — ends earlier at the first mucus sign.`;
+      title = t.infertileUntil(fmtDate(status.lastDay));
+      body = t.preBody(t.rules[status.rule]);
       break;
     case 'infertile-post':
       tone = 'tone-ovulation';
-      title = status.fromEvening ? 'Infertile from this evening' : 'Infertile until your next period';
-      body = `Double check complete (temperature + mucus) on ${fmtDate(status.since)}.`;
+      title = status.fromEvening ? t.fromEvening : t.untilNextPeriod;
+      body = t.postBody(fmtDate(status.since));
       break;
     case 'fertile':
-      title = 'Fertile';
-      body = NFP_REASON[status.reason] ?? status.reason;
+      title = t.fertile;
+      body = t.reasons[status.reason] ?? status.reason;
       break;
   }
   return (
     <div className={`card ${tone}`}>
-      <h3>Sensiplan evaluation</h3>
+      <h3>{t.title}</h3>
       <h2>{title}</h2>
       <p className="small">{body}</p>
-      <p className="hint">Only reliable if you have learned the method and log daily, following the rules correctly.</p>
+      <p className="hint">{t.hint}</p>
     </div>
   );
 }
@@ -265,22 +243,23 @@ function NfpCard({ status }: { status: NfpStatus }) {
 
 function TodayLog() {
   const { days, today, settings } = useStore();
+  const t = useT().today.log;
   const d = days.get(today);
   const items: string[] = [];
-  if (d?.bleeding) items.push(d.bleeding.value === 'spotting' ? 'Spotting' : `${d.bleeding.value[0]!.toUpperCase()}${d.bleeding.value.slice(1)} flow`);
+  if (d?.bleeding) items.push(t.flow[d.bleeding.value]);
   if (d?.temperature) items.push(fmtTemp(d.temperature.value, settings.temperatureUnit));
-  if (d?.mucus) items.push('Mucus');
-  if (d?.lh) items.push(`LH ${d.lh}`);
-  if (d?.sex) items.push('Sex');
-  if (d?.symptoms?.length) items.push(`${d.symptoms.length} symptom${d.symptoms.length > 1 ? 's' : ''}`);
-  if (d?.mood?.length) items.push('Mood');
-  if (d?.note) items.push('Note');
+  if (d?.mucus) items.push(t.mucus);
+  if (d?.lh) items.push(t.lh[d.lh]);
+  if (d?.sex) items.push(t.sex);
+  if (d?.symptoms?.length) items.push(t.symptoms(d.symptoms.length));
+  if (d?.mood?.length) items.push(t.mood);
+  if (d?.note) items.push(t.note);
 
   return (
-    <button className="card spread" style={{ textAlign: 'left', width: '100%' }} onClick={() => navigate(`/day/${today}`)}>
+    <button className="card spread" style={{ textAlign: 'start', width: '100%' }} onClick={() => navigate(`/day/${today}`)}>
       <div>
-        <h2>{d ? "Today's log" : 'Log today'}</h2>
-        <p className="small muted">{items.length ? items.join(' · ') : settings.track.temperature ? 'Temperature, bleeding, mucus, symptoms…' : 'Bleeding, symptoms, mood…'}</p>
+        <h2>{d ? t.logged : t.empty}</h2>
+        <p className="small muted">{items.length ? items.join(' · ') : settings.track.temperature ? t.placeholderWithTemp : t.placeholder}</p>
       </div>
       <span className="icon-btn" aria-hidden="true">
         <Icon name={d ? 'right' : 'plus'} />
@@ -291,6 +270,7 @@ function TodayLog() {
 
 function PeriodStartButton() {
   const { saveDay, today, days } = useStore();
+  const t = useT();
   const toast = useToast();
   const [busy, setBusy] = useState(false);
   return (
@@ -301,15 +281,15 @@ function PeriodStartButton() {
         setBusy(true);
         try {
           await saveDay(today, { ...days.get(today), bleeding: { value: 'medium' } });
-          toast('Period logged for today');
+          toast(t.today.periodLogged);
         } catch (e) {
-          toast(`Could not save: ${(e as Error).message}`);
+          toast(t.common.couldNotSave((e as Error).message));
         } finally {
           setBusy(false);
         }
       }}
     >
-      <Icon name="drop" /> My period started today
+      <Icon name="drop" /> {t.today.periodStarted}
     </button>
   );
 }
@@ -318,6 +298,8 @@ function PeriodStartButton() {
 
 function Welcome() {
   const { saveDay, today, settings, saveSettings } = useStore();
+  const t = useT();
+  const w = t.today.welcome;
   const toast = useToast();
   const [date, setDate] = useState(today);
   const [length, setLength] = useState(settings.defaultCycleLength);
@@ -326,18 +308,15 @@ function Welcome() {
   return (
     <div className="card stack">
       <div>
-        <h2>Welcome to Ebbwell</h2>
-        <p className="muted small">
-          Your data stays on your own server, encrypted. Start with the first day of your last period — predictions improve with every cycle
-          you log.
-        </p>
+        <h2>{w.title}</h2>
+        <p className="muted small">{w.body}</p>
       </div>
       <label className="field">
-        <span>First day of your last period</span>
+        <span>{w.lastPeriod}</span>
         <input type="date" value={date} max={today} min={addDays(today, -120)} onChange={(e) => setDate(e.target.value)} />
       </label>
       <label className="field">
-        <span>Usual cycle length (days) — a starting guess</span>
+        <span>{w.cycleLength}</span>
         <input type="number" inputMode="numeric" min={18} max={60} value={length} onChange={(e) => setLength(Number(e.target.value))} />
       </label>
       <button
@@ -348,15 +327,15 @@ function Welcome() {
           try {
             if (length >= 18 && length <= 60) await saveSettings({ defaultCycleLength: Math.round(length) });
             await saveDay(date, { bleeding: { value: 'medium' } });
-            toast('Saved. Log the other period days from the calendar.');
+            toast(w.saved);
           } catch (e) {
-            toast(`Could not save: ${(e as Error).message}`);
+            toast(t.common.couldNotSave((e as Error).message));
           } finally {
             setBusy(false);
           }
         }}
       >
-        Start
+        {w.start}
       </button>
     </div>
   );

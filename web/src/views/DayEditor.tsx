@@ -6,11 +6,9 @@ import {
 } from '../../../shared/schema.ts';
 import { goBack, navigate } from '../router.ts';
 import { useStore } from '../store.tsx';
-import { LABELS, fmtLong, fromDisplayTemp, toDisplayTemp } from '../format.ts';
+import { fmtLong, fromDisplayTemp, toDisplayTemp } from '../format.ts';
+import { useT } from '../i18n.tsx';
 import { Chips, Icon, Seg, useToast } from '../ui.tsx';
-
-const YES_NO = { negative: 'Negative', positive: 'Positive' } as const;
-const SEX = { protected: 'Protected', unprotected: 'Unprotected' } as const;
 
 /** Drops undefined keys and empty arrays/objects so the stored record stays minimal. */
 function clean(d: DayData): DayData {
@@ -28,6 +26,9 @@ function clean(d: DayData): DayData {
 
 export function DayEditor({ date }: { date: string }) {
   const { days, saveDay, settings, today } = useStore();
+  const t = useT();
+  const tx = t.day;
+  const L = t.labels;
   const toast = useToast();
   const unit = settings.temperatureUnit;
   const track = settings.track;
@@ -63,10 +64,10 @@ export function DayEditor({ date }: { date: string }) {
     setBusy(true);
     try {
       await saveDay(date, clean(draft));
-      toast('Saved');
+      toast(tx.saved);
       goBack('/');
     } catch (e) {
-      toast(`Could not save: ${(e as Error).message}`);
+      toast(t.common.couldNotSave((e as Error).message));
     } finally {
       setBusy(false);
     }
@@ -79,19 +80,14 @@ export function DayEditor({ date }: { date: string }) {
   return (
     <div className="editor">
       <header className="page-header">
-        <button className="icon-btn" aria-label="Previous day" onClick={() => navigate(`/day/${addDays(date, -1)}`, { replace: true })}>
+        <button className="icon-btn" aria-label={tx.previous} onClick={() => navigate(`/day/${addDays(date, -1)}`, { replace: true })}>
           <Icon name="left" />
         </button>
         <div className="center">
           <h1 style={{ fontSize: '1.15rem' }}>{fmtLong(date)}</h1>
-          {date === today && <div className="sub">Today</div>}
+          {date === today && <div className="sub">{t.common.today}</div>}
         </div>
-        <button
-          className="icon-btn"
-          aria-label="Next day"
-          disabled={nextDay > today}
-          onClick={() => navigate(`/day/${nextDay}`, { replace: true })}
-        >
+        <button className="icon-btn" aria-label={tx.next} disabled={nextDay > today} onClick={() => navigate(`/day/${nextDay}`, { replace: true })}>
           <Icon name="right" />
         </button>
       </header>
@@ -99,14 +95,14 @@ export function DayEditor({ date }: { date: string }) {
       <div className="stack">
         <section className="card">
           <div className="section-title">
-            <span className="dot" style={{ background: 'var(--period)' }} /> Bleeding
+            <span className="dot" style={{ background: 'var(--period)' }} /> {tx.bleeding}
           </div>
           <Seg
-            label="Bleeding"
+            label={tx.bleeding}
             tone="period"
             value={draft.bleeding?.value}
             options={BLEEDING}
-            labels={LABELS.bleeding}
+            labels={L.bleeding}
             onChange={(v) => set('bleeding', v ? { ...draft.bleeding, value: v } : undefined)}
           />
           {draft.bleeding && (
@@ -117,8 +113,8 @@ export function DayEditor({ date }: { date: string }) {
                 onChange={(e) => set('bleeding', { ...draft.bleeding!, exclude: e.target.checked || undefined })}
               />
               <span>
-                Not part of a period
-                <div className="hint">e.g. breakthrough bleeding — won't start a new cycle.</div>
+                {tx.notPeriod}
+                <div className="hint">{tx.notPeriodHint}</div>
               </span>
             </label>
           )}
@@ -127,7 +123,7 @@ export function DayEditor({ date }: { date: string }) {
         {track.temperature && (
           <section className="card">
             <div className="section-title">
-              <Icon name="thermo" /> Basal temperature
+              <Icon name="thermo" /> {tx.temperature}
             </div>
             <div className="grid-2">
               <label className="field">
@@ -135,6 +131,7 @@ export function DayEditor({ date }: { date: string }) {
                 <input
                   type="text"
                   inputMode="decimal"
+                  dir="ltr"
                   placeholder={unit === 'F' ? '97.70' : '36.50'}
                   value={tempText}
                   aria-invalid={tempInvalid}
@@ -142,7 +139,7 @@ export function DayEditor({ date }: { date: string }) {
                 />
               </label>
               <label className="field">
-                <span>Time measured</span>
+                <span>{tx.timeMeasured}</span>
                 <input
                   type="time"
                   value={temp?.time ?? ''}
@@ -151,16 +148,20 @@ export function DayEditor({ date }: { date: string }) {
                 />
               </label>
             </div>
-            {tempInvalid && <p className="small" style={{ color: 'var(--danger)' }}>Enter a value between {tempRange[0]} and {tempRange[1]}.</p>}
+            {tempInvalid && (
+              <p className="small" style={{ color: 'var(--danger)' }}>
+                {tx.tempRange(tempRange[0]!, tempRange[1]!)}
+              </p>
+            )}
             {temp && (
               <>
                 <div className="field">
-                  <span>Anything that may have disturbed it?</span>
+                  <span>{tx.disturbedQuestion}</span>
                   <Chips
-                    label="Disturbances"
+                    label={tx.disturbances}
                     value={temp.disturbances}
                     options={DISTURBANCES}
-                    labels={LABELS.disturbances}
+                    labels={L.disturbances}
                     onChange={(v) => set('temperature', { ...temp, disturbances: v, exclude: v.length ? true : temp.exclude })}
                   />
                 </div>
@@ -171,72 +172,76 @@ export function DayEditor({ date }: { date: string }) {
                     onChange={(e) => set('temperature', { ...temp, exclude: e.target.checked || undefined })}
                   />
                   <span>
-                    Exclude from evaluation
-                    <div className="hint">Disturbed readings are skipped by the temperature rule (Sensiplan).</div>
+                    {tx.exclude}
+                    <div className="hint">{tx.excludeHint}</div>
                   </span>
                 </label>
               </>
             )}
-            <p className="hint">Measure right after waking, before getting up, at the same time each day, same method.</p>
+            <p className="hint">{tx.measureHint}</p>
           </section>
         )}
 
         {track.mucus && (
           <section className="card">
             <div className="section-title spread">
-              <span>Cervical mucus</span>
-              {mucus && <span className="badge" title="Sensiplan category">{MUCUS_LABELS[mucusCategory(mucus)]}</span>}
+              <span>{tx.mucus}</span>
+              {mucus && (
+                <span className="badge" title={tx.sensiplanCategory}>
+                  {MUCUS_LABELS[mucusCategory(mucus)]}
+                </span>
+              )}
             </div>
             <div className="field">
-              <span>Sensation (vulva)</span>
+              <span>{tx.sensation}</span>
               <Seg
-                label="Sensation"
+                label={tx.sensationShort}
                 tone="fertile"
                 value={mucus?.sensation}
                 options={MUCUS_SENSATION}
-                labels={LABELS.sensation}
+                labels={L.sensation}
                 onChange={(v) => set('mucus', v ? { appearance: mucus?.appearance ?? 'none', ...mucus, sensation: v } : undefined)}
               />
             </div>
             <div className="field">
-              <span>Appearance</span>
+              <span>{tx.appearance}</span>
               <Seg
-                label="Appearance"
+                label={tx.appearance}
                 tone="fertile"
                 value={mucus?.appearance}
                 options={MUCUS_APPEARANCE}
-                labels={LABELS.appearance}
+                labels={L.appearance}
                 onChange={(v) =>
                   set('mucus', v ? { sensation: mucus?.sensation ?? 'nothing', ...mucus, appearance: v } : mucus && { ...mucus, appearance: 'none' })
                 }
               />
             </div>
-            <p className="hint">Record the most fertile quality observed during the day.</p>
+            <p className="hint">{tx.mucusHint}</p>
           </section>
         )}
 
         {track.cervix && (
           <section className="card">
-            <div className="section-title">Cervix</div>
+            <div className="section-title">{tx.cervix}</div>
             <Seg
-              label="Opening"
+              label={tx.opening}
               value={draft.cervix?.opening}
               options={['closed', 'medium', 'open'] as const}
-              labels={{ closed: 'Closed', medium: 'Partly open', open: 'Open' }}
+              labels={L.opening}
               onChange={(v) => set('cervix', { ...draft.cervix, opening: v })}
             />
             <Seg
-              label="Firmness"
+              label={tx.firmness}
               value={draft.cervix?.firmness}
               options={['hard', 'soft'] as const}
-              labels={{ hard: 'Firm', soft: 'Soft' }}
+              labels={L.firmness}
               onChange={(v) => set('cervix', { ...draft.cervix, firmness: v })}
             />
             <Seg
-              label="Position"
+              label={tx.position}
               value={draft.cervix?.position}
               options={['low', 'medium', 'high'] as const}
-              labels={{ low: 'Low', medium: 'Middle', high: 'High' }}
+              labels={L.position}
               onChange={(v) => set('cervix', { ...draft.cervix, position: v })}
             />
           </section>
@@ -246,26 +251,26 @@ export function DayEditor({ date }: { date: string }) {
           <section className="card">
             {track.lh && (
               <div className="field">
-                <span>Ovulation (LH) test</span>
-                <Seg label="LH test" value={draft.lh} options={['negative', 'positive'] as const} labels={YES_NO} onChange={(v) => set('lh', v)} />
+                <span>{tx.lh}</span>
+                <Seg label={tx.lhShort} value={draft.lh} options={['negative', 'positive'] as const} labels={L.test} onChange={(v) => set('lh', v)} />
               </div>
             )}
             {track.pregnancyTest && (
               <div className="field">
-                <span>Pregnancy test</span>
+                <span>{tx.pregnancyTest}</span>
                 <Seg
-                  label="Pregnancy test"
+                  label={tx.pregnancyTest}
                   value={draft.pregnancyTest}
                   options={['negative', 'positive'] as const}
-                  labels={YES_NO}
+                  labels={L.test}
                   onChange={(v) => set('pregnancyTest', v)}
                 />
               </div>
             )}
             {track.sex && (
               <div className="field">
-                <span>Sex</span>
-                <Seg label="Sex" value={draft.sex} options={['protected', 'unprotected'] as const} labels={SEX} onChange={(v) => set('sex', v)} />
+                <span>{tx.sex}</span>
+                <Seg label={tx.sex} value={draft.sex} options={['protected', 'unprotected'] as const} labels={L.sex} onChange={(v) => set('sex', v)} />
               </div>
             )}
           </section>
@@ -273,22 +278,22 @@ export function DayEditor({ date }: { date: string }) {
 
         {track.symptoms && (
           <section className="card">
-            <div className="section-title">Symptoms</div>
-            <Chips label="Symptoms" value={draft.symptoms} options={SYMPTOMS} labels={LABELS.symptoms} onChange={(v) => set('symptoms', v)} />
+            <div className="section-title">{tx.symptoms}</div>
+            <Chips label={tx.symptoms} value={draft.symptoms} options={SYMPTOMS} labels={L.symptoms} onChange={(v) => set('symptoms', v)} />
           </section>
         )}
 
         {track.mood && (
           <section className="card">
-            <div className="section-title">Mood</div>
-            <Chips label="Mood" value={draft.mood} options={MOODS} labels={LABELS.mood} onChange={(v) => set('mood', v)} />
+            <div className="section-title">{tx.mood}</div>
+            <Chips label={tx.mood} value={draft.mood} options={MOODS} labels={L.mood} onChange={(v) => set('mood', v)} />
           </section>
         )}
 
         <section className="card">
           <label className="field">
-            <span>Note</span>
-            <textarea maxLength={2000} value={draft.note ?? ''} onChange={(e) => set('note', e.target.value || undefined)} />
+            <span>{tx.note}</span>
+            <textarea maxLength={2000} dir="auto" value={draft.note ?? ''} onChange={(e) => set('note', e.target.value || undefined)} />
           </label>
         </section>
 
@@ -302,11 +307,11 @@ export function DayEditor({ date }: { date: string }) {
                 setTempText('');
               }}
             >
-              Clear
+              {tx.clear}
             </button>
           )}
           <button className="btn primary" disabled={busy || tempInvalid} onClick={save}>
-            {isEmptyDay(clean(draft)) && saved ? 'Save (delete day)' : 'Save'}
+            {isEmptyDay(clean(draft)) && saved ? tx.saveDelete : t.common.save}
           </button>
         </div>
       </div>

@@ -9,12 +9,6 @@ import type { DayData, DayEntry } from './schema.ts';
 export const SHARE_SCOPES = ['fertility', 'history', 'wellbeing'] as const;
 export type ShareScope = (typeof SHARE_SCOPES)[number];
 
-export const SCOPE_LABELS: Record<ShareScope, { title: string; body: string }> = {
-  fertility: { title: 'Fertility', body: 'Fertile window, ovulation, temperature, mucus and LH tests' },
-  history: { title: 'History', body: 'Past periods and cycle statistics' },
-  wellbeing: { title: 'Symptoms & mood', body: 'Daily symptoms and mood' },
-};
-
 export interface PartnerPrediction {
   start: Range;
   periodEnd: string;

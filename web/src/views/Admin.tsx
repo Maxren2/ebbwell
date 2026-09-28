@@ -1,34 +1,29 @@
 import { useEffect, useState, type FormEvent } from 'react';
+import type { Messages } from '../../../shared/i18n/index.ts';
 import { ApiError, api, type AccessReport, type AdminUser } from '../api.ts';
+import { fmtDay } from '../format.ts';
+import { useT } from '../i18n.tsx';
 import { useStore } from '../store.tsx';
 import { useToast } from '../ui.tsx';
 
-const fmtDay = (ms: number | null) => (ms ? new Date(ms).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : 'never');
+const MIN_PASSWORD = 10;
 
-const POLICY: Record<AccessReport['policy']['localLogin'], string> = {
-  disabled: 'Password sign-in is disabled. Only single sign-on works.',
-  'local-network': 'Password sign-in only from the local network, never through the public domain.',
-  everywhere: 'Password sign-in from anywhere, including the public domain.',
-};
+const errorText = (t: Messages, e: unknown) => (e instanceof ApiError ? (t.admin.errors[e.message] ?? e.message) : (e as Error).message);
 
-const ERRORS: Record<string, string> = {
-  'last-admin': 'There must always be at least one active administrator.',
-  'cannot-change-self': "You can't change your own administrator or disabled status.",
-  'use-account-settings': 'Use your own account settings for that.',
-  'managed-by-identity-provider': 'Administrator rights of single sign-on users come from their identity-provider groups.',
-  'username-taken': 'That username is already taken.',
-  'wrong-password': 'Your password is wrong.',
-  'wrong-code': 'That code is not valid.',
-  '2fa-required': 'Your administrator requires two-factor authentication.',
-  invalid: 'Usernames use 3–32 lowercase letters, digits, dot, dash or underscore.',
-};
-
-const errorText = (e: unknown) => (e instanceof ApiError ? (ERRORS[e.message] ?? e.message) : (e as Error).message);
+function passwordError(t: Messages, e: unknown): string {
+  if (!(e instanceof ApiError)) return t.account.couldNotChange;
+  const reason = e.body.reason as keyof Messages['passwordErrors'] | undefined;
+  if (reason === 'length') return t.passwordErrors.length(MIN_PASSWORD);
+  if (reason && reason in t.passwordErrors) return t.passwordErrors[reason] as string;
+  return String(e.body.message ?? e.message);
+}
 
 // ------------------------------------------------------------------ own account
 
 export function AccountSection() {
   const { me } = useStore();
+  const t = useT();
+  const x = t.account;
   const toast = useToast();
   const [current, setCurrent] = useState('');
   const [password, setPassword] = useState('');
@@ -38,14 +33,14 @@ export function AccountSection() {
 
   return (
     <section className="card stack">
-      <h3>Account</h3>
+      <h3>{x.title}</h3>
       <p className="small muted">
-        {a.kind === 'local' ? `Local account "${a.username}"` : a.kind === 'oidc' ? 'Signed in with single sign-on' : 'Development account'}
-        {a.isAdmin && ' · administrator'}
+        {a.kind === 'local' ? x.local(a.username ?? '') : a.kind === 'oidc' ? x.sso : x.dev}
+        {a.isAdmin && x.administrator}
       </p>
       {a.kind === 'local' && (
         <details>
-          <summary className="small">Change password</summary>
+          <summary className="small">{x.changePassword}</summary>
           <form
             className="stack"
             style={{ marginTop: 8 }}
@@ -57,9 +52,9 @@ export function AccountSection() {
                 setCurrent('');
                 setPassword('');
                 setConfirm('');
-                toast('Password changed — other devices were signed out');
+                toast(x.passwordChanged);
               } catch (err) {
-                toast(err instanceof ApiError ? String(err.body.message ?? err.message) : 'Could not change the password');
+                toast(passwordError(t, err));
               } finally {
                 setBusy(false);
               }
@@ -67,19 +62,19 @@ export function AccountSection() {
           >
             <input type="text" autoComplete="username" value={a.username ?? ''} readOnly hidden />
             <label className="field">
-              <span>Current password</span>
+              <span>{x.currentPassword}</span>
               <input type="password" autoComplete="current-password" value={current} onChange={(e) => setCurrent(e.target.value)} />
             </label>
             <label className="field">
-              <span>New password (at least 10 characters)</span>
+              <span>{x.newPassword(MIN_PASSWORD)}</span>
               <input type="password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} />
             </label>
             <label className="field">
-              <span>Repeat new password</span>
+              <span>{x.repeatPassword}</span>
               <input type="password" autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} />
             </label>
-            <button className="btn primary" disabled={busy || !current || password.length < 10 || password !== confirm}>
-              Change password
+            <button className="btn primary" disabled={busy || !current || password.length < MIN_PASSWORD || password !== confirm}>
+              {x.changePassword}
             </button>
           </form>
         </details>
@@ -90,6 +85,8 @@ export function AccountSection() {
 }
 
 function TwoFactorPanel() {
+  const t = useT();
+  const x = t.account;
   const toast = useToast();
   const [info, setInfo] = useState<Awaited<ReturnType<typeof api.account.twoFactor>> | null>(null);
   const [action, setAction] = useState<'renew' | 'disable' | null>(null);
@@ -107,14 +104,14 @@ function TwoFactorPanel() {
       if (action === 'renew') setCodes((await api.account.renewRecoveryCodes(password, code)).codes);
       else {
         await api.account.disableTwoFactor(password, code);
-        toast('Two-factor authentication turned off');
+        toast(x.turnedOff);
       }
       setAction(null);
       setPassword('');
       setCode('');
       await load();
     } catch (err) {
-      toast(errorText(err));
+      toast(errorText(t, err));
     }
   };
 
@@ -123,24 +120,28 @@ function TwoFactorPanel() {
       <div className="divider" />
       <div className="spread">
         <div>
-          <strong>Two-factor authentication</strong>
+          <strong>{x.twoFactor}</strong>
           <div className="small muted">
-            {info.enabled ? `On · ${info.recoveryCodesLeft} recovery code${info.recoveryCodesLeft === 1 ? '' : 's'} left` : 'Off'}
-            {info.required && ' · required by your administrator'}
+            {info.enabled ? x.twoFactorOn(info.recoveryCodesLeft) : x.off}
+            {info.required && x.requiredByAdmin}
           </div>
         </div>
-        {info.enabled ? <span className="chip high">On</span> : <span className="chip low">Off</span>}
+        {info.enabled ? <span className="chip high">{x.on}</span> : <span className="chip low">{x.off}</span>}
       </div>
       {!info.enabled && (
         <a className="btn primary" href="/auth/2fa/setup">
-          Set up with an authenticator app
+          {x.setUp}
         </a>
       )}
-      {info.enabled && info.recoveryCodesLeft <= 3 && <p className="small" style={{ color: 'var(--warn)' }}>Few recovery codes left — create new ones.</p>}
+      {info.enabled && info.recoveryCodesLeft <= 3 && (
+        <p className="small" style={{ color: 'var(--warn)' }}>
+          {x.fewCodes}
+        </p>
+      )}
       {codes && (
         <div className="card tone-warn stack small">
-          <strong>New recovery codes (the old ones no longer work)</strong>
-          <ol className="small">
+          <strong>{x.newCodesTitle}</strong>
+          <ol className="small" dir="ltr">
             {codes.map((c) => (
               <li key={c}>
                 <code>{c}</code>
@@ -148,11 +149,11 @@ function TwoFactorPanel() {
             ))}
           </ol>
           <div className="grid-2">
-            <button className="btn" onClick={() => navigator.clipboard.writeText(codes.join('\n')).then(() => toast('Copied'))}>
-              Copy
+            <button className="btn" onClick={() => navigator.clipboard.writeText(codes.join('\n')).then(() => toast(t.common.copied))}>
+              {t.common.copy}
             </button>
             <button className="btn" onClick={() => setCodes(null)}>
-              I saved them
+              {x.saved}
             </button>
           </div>
         </div>
@@ -160,32 +161,32 @@ function TwoFactorPanel() {
       {info.enabled && !action && (
         <div className="grid-2">
           <button className="btn" onClick={() => setAction('renew')}>
-            New recovery codes
+            {x.newCodes}
           </button>
           {!info.required && (
             <button className="btn danger" onClick={() => setAction('disable')}>
-              Turn off
+              {t.common.turnOff}
             </button>
           )}
         </div>
       )}
       {action && (
         <form className="stack" onSubmit={submit}>
-          <p className="small muted">Confirm with your password and a code from your authenticator app (or a recovery code).</p>
+          <p className="small muted">{x.confirmHint}</p>
           <label className="field">
-            <span>Password</span>
+            <span>{x.password}</span>
             <input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} />
           </label>
           <label className="field">
-            <span>Code</span>
-            <input type="text" inputMode="numeric" autoComplete="one-time-code" value={code} onChange={(e) => setCode(e.target.value)} />
+            <span>{x.code}</span>
+            <input type="text" inputMode="numeric" autoComplete="one-time-code" dir="ltr" value={code} onChange={(e) => setCode(e.target.value)} />
           </label>
           <div className="grid-2">
             <button className={`btn ${action === 'disable' ? 'danger' : 'primary'}`} disabled={!password || code.length < 6}>
-              {action === 'renew' ? 'Create new codes' : 'Turn off 2FA'}
+              {action === 'renew' ? x.createCodes : x.turnOff2fa}
             </button>
             <button type="button" className="btn" onClick={() => setAction(null)}>
-              Cancel
+              {t.common.cancel}
             </button>
           </div>
         </form>
@@ -197,6 +198,8 @@ function TwoFactorPanel() {
 // ------------------------------------------------------------------ administration
 
 export function AdminSection() {
+  const t = useT();
+  const x = t.admin;
   const toast = useToast();
   const [users, setUsers] = useState<AdminUser[] | null>(null);
   const [access, setAccess] = useState<AccessReport | null>(null);
@@ -219,30 +222,42 @@ export function AdminSection() {
       if (done) toast(done);
       await load();
     } catch (e) {
-      toast(errorText(e));
+      toast(errorText(t, e));
     }
   };
 
+  const day = (ms: number | null) => (ms ? fmtDay(ms, true) : t.common.never);
   const c = access?.thisConnection;
 
   return (
     <section className="card stack" id="admin">
-      <h3>Administration</h3>
-      <p className="small muted">Manage who can sign in. Administrators never see anyone's cycle data.</p>
+      <h3>{x.title}</h3>
+      <p className="small muted">{x.intro}</p>
 
       {access && (
         <div className="card tone-ovulation small stack">
-          <strong>Sign-in policy</strong>
-          <span>{POLICY[access.policy.localLogin]}</span>
-          <span>Two-factor for local accounts: {access.policy.twoFactor}</span>
-          <span>Single sign-on: {access.policy.oidc ? 'configured' : 'not configured'} · Public URL: {access.policy.publicUrl}</span>
-          {access.policy.localLogin === 'local-network' && <span>Local networks: {access.policy.localNetworks.join(', ')}</span>}
-          <span className="hint">Set by LOCAL_LOGIN / LOCAL_NETWORKS in the app configuration (TrueNAS app settings), not from here.</span>
+          <strong>{x.policyTitle}</strong>
+          <span>{x.policy[access.policy.localLogin]}</span>
+          <span>{x.twoFactorPolicy(x.twoFactorValues[access.policy.twoFactor])}</span>
+          <span>
+            {x.sso(access.policy.oidc, '')}
+            <bdi dir="ltr">{access.policy.publicUrl}</bdi>
+          </span>
+          {access.policy.localLogin === 'local-network' && (
+            <span>
+              {x.localNetworks('')}
+              <bdi dir="ltr">{access.policy.localNetworks.join(', ')}</bdi>
+            </span>
+          )}
+          <span className="hint">{x.setBy}</span>
           {c && (
             <span>
-              This connection: {c.local ? 'local network' : 'outside the local network'}, {c.viaPublicUrl ? 'through the public domain' : 'direct address'},{' '}
-              {c.secure ? 'HTTPS' : 'plain HTTP'} → password sign-in {c.localLoginAllowed ? <strong>allowed</strong> : <strong>not allowed</strong>}
-              <span className="hint"> ({c.addresses.join(' → ')})</span>
+              {x.connection(c.local, c.viaPublicUrl, c.secure)}
+              <strong>{c.localLoginAllowed ? x.allowed : x.notAllowed}</strong>
+              <span className="hint">
+                {' '}
+                (<bdi dir="ltr">{c.addresses.join(' → ')}</bdi>)
+              </span>
             </span>
           )}
         </div>
@@ -250,15 +265,17 @@ export function AdminSection() {
 
       {secret && (
         <div className="card tone-warn stack small">
-          <strong>Temporary password for {secret.username}</strong>
-          <code className="invite-url">{secret.password}</code>
-          <span>Shown only once. They must choose their own password at first sign-in.</span>
+          <strong>{x.temporaryPassword(secret.username)}</strong>
+          <code className="invite-url" dir="ltr">
+            {secret.password}
+          </code>
+          <span>{x.temporaryHint}</span>
           <div className="grid-2">
-            <button className="btn" onClick={() => navigator.clipboard.writeText(secret.password).then(() => toast('Copied'))}>
-              Copy
+            <button className="btn" onClick={() => navigator.clipboard.writeText(secret.password).then(() => toast(t.common.copied))}>
+              {t.common.copy}
             </button>
             <button className="btn" onClick={() => setSecret(null)}>
-              Done
+              {t.common.done}
             </button>
           </div>
         </div>
@@ -270,18 +287,18 @@ export function AdminSection() {
             <summary>
               {u.name}{' '}
               <span className="small muted">
-                · {u.kind === 'local' ? u.username : u.kind === 'oidc' ? 'single sign-on' : 'dev'}
-                {u.isAdmin && ' · admin'}
-                {u.twoFactor && ' · 2FA'}
-                {u.disabled && ' · disabled'}
-                {u.locked && ' · locked'}
-                {u.self && ' · you'}
+                · {u.kind === 'local' ? u.username : u.kind === 'oidc' ? x.kind.sso : x.kind.dev}
+                {u.isAdmin && ` · ${x.tags.admin}`}
+                {u.twoFactor && ` · ${x.tags.twoFactor}`}
+                {u.disabled && ` · ${x.tags.disabled}`}
+                {u.locked && ` · ${x.tags.locked}`}
+                {u.self && ` · ${x.tags.you}`}
               </span>
             </summary>
             <div className="stack small" style={{ marginTop: 8 }}>
               <span className="muted">
-                Created {fmtDay(u.createdAt)} · last sign-in {fmtDay(u.lastLoginAt)}
-                {u.mustChangePassword && ' · temporary password pending'}
+                {x.created(day(u.createdAt), day(u.lastLoginAt))}
+                {u.mustChangePassword && x.pendingTemporary}
               </span>
               {!u.self && (
                 <div className="seg">
@@ -295,33 +312,32 @@ export function AdminSection() {
                         })
                       }
                     >
-                      Reset password
+                      {x.resetPassword}
                     </button>
                   )}
                   {u.twoFactor && (
                     <button
                       className="btn"
                       onClick={() => {
-                        if (confirm(`Remove two-factor authentication for ${u.name}? They will sign in with their password only and can set it up again.`))
-                          void act(() => api.admin.resetTwoFactor(u.id), 'Two-factor reset and user signed out');
+                        if (confirm(x.resetTwoFactorConfirm(u.name))) void act(() => api.admin.resetTwoFactor(u.id), x.resetTwoFactorDone);
                       }}
                     >
-                      Reset two-factor
+                      {x.resetTwoFactor}
                     </button>
                   )}
                   <button className="btn" onClick={() => act(() => api.admin.update(u.id, { isAdmin: !u.isAdmin }))}>
-                    {u.isAdmin ? 'Remove admin' : 'Make admin'}
+                    {u.isAdmin ? x.removeAdmin : x.makeAdmin}
                   </button>
-                  <button className="btn" onClick={() => act(() => api.admin.update(u.id, { disabled: !u.disabled }), u.disabled ? 'Account enabled' : 'Account disabled and signed out')}>
-                    {u.disabled ? 'Enable' : 'Disable'}
+                  <button className="btn" onClick={() => act(() => api.admin.update(u.id, { disabled: !u.disabled }), u.disabled ? x.enabledDone : x.disabledDone)}>
+                    {u.disabled ? x.enable : x.disable}
                   </button>
                   <button
                     className="btn danger"
                     onClick={() => {
-                      if (confirm(`Delete ${u.name} and ALL their data? This cannot be undone.`)) void act(() => api.admin.remove(u.id), 'Account deleted');
+                      if (confirm(x.deleteConfirm(u.name))) void act(() => api.admin.remove(u.id), x.deleted);
                     }}
                   >
-                    Delete
+                    {t.common.delete}
                   </button>
                 </div>
               )}
@@ -347,33 +363,31 @@ export function AdminSection() {
         >
           <div className="grid-2">
             <label className="field">
-              <span>Username</span>
-              <input type="text" autoCapitalize="none" spellCheck={false} maxLength={32} value={username} onChange={(e) => setUsername(e.target.value)} />
+              <span>{x.username}</span>
+              <input type="text" autoCapitalize="none" spellCheck={false} maxLength={32} dir="ltr" value={username} onChange={(e) => setUsername(e.target.value)} />
             </label>
             <label className="field">
-              <span>Display name</span>
+              <span>{x.displayName}</span>
               <input type="text" maxLength={100} value={name} onChange={(e) => setName(e.target.value)} />
             </label>
           </div>
           <label className="check">
             <input type="checkbox" checked={makeAdmin} onChange={(e) => setMakeAdmin(e.target.checked)} />
-            <span>Administrator</span>
+            <span>{x.administrator}</span>
           </label>
-          {access?.policy.localLogin === 'disabled' && (
-            <p className="hint">Password sign-in is currently disabled (LOCAL_LOGIN), so this account can't sign in until it is enabled.</p>
-          )}
+          {access?.policy.localLogin === 'disabled' && <p className="hint">{x.localDisabled}</p>}
           <div className="grid-2">
             <button className="btn primary" disabled={username.trim().length < 3}>
-              Create account
+              {x.create}
             </button>
             <button type="button" className="btn" onClick={() => setCreating(false)}>
-              Cancel
+              {t.common.cancel}
             </button>
           </div>
         </form>
       ) : (
         <button className="btn" onClick={() => setCreating(true)}>
-          Add a local account
+          {x.add}
         </button>
       )}
     </section>

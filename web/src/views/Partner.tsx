@@ -1,46 +1,39 @@
 import { useEffect, useMemo, useState } from 'react';
-import { SCOPE_LABELS, type PartnerView } from '../../../shared/partner.ts';
+import type { PartnerView, ShareScope } from '../../../shared/partner.ts';
 import { ApiError, api, type ShareSummary } from '../api.ts';
 import { goBack, navigate } from '../router.ts';
 import { useStore } from '../store.tsx';
-import { CONFIDENCE, LABELS, fmtDate, fmtRange, relDays } from '../format.ts';
+import { fmtDate, fmtRange, relDays } from '../format.ts';
+import { useT } from '../i18n.tsx';
 import { marksInputFromPartner } from '../marks.ts';
 import { Icon, useToast } from '../ui.tsx';
 import { Legend, MonthCalendar } from './Calendar.tsx';
 
-const PHASE: Record<NonNullable<PartnerView['current']>['phase'], string> = {
-  period: 'Period',
-  late: 'Period late',
-  cycle: 'Between periods',
-  follicular: 'Before fertile window',
-  fertile: 'Fertile window',
-  'peak-fertile': 'Peak fertility',
-  luteal: 'After ovulation',
-};
-
 function PartnerSummary({ view, today }: { view: PartnerView; today: string }) {
+  const t = useT();
+  const x = t.partner;
   const c = view.current;
   const next = view.predictions[1];
   const cur = view.predictions[0];
-  if (view.paused) return <p className="muted small">{view.owner.name} has paused predictions.</p>;
-  if (!c || !next) return <p className="muted small">No cycle logged yet.</p>;
+  if (view.paused) return <p className="muted small">{x.paused(view.owner.name)}</p>;
+  if (!c || !next) return <p className="muted small">{x.noCycle}</p>;
   return (
     <div className="stack">
       <div className="spread">
         <div className="stat">
-          <div className="label">Cycle day</div>
+          <div className="label">{x.cycleDay}</div>
           <div className="value">{c.cycleDay}</div>
         </div>
-        <div className="stat" style={{ textAlign: 'right' }}>
-          <div className="label">Now</div>
+        <div className="stat" style={{ textAlign: 'end' }}>
+          <div className="label">{x.now}</div>
           <div className="value" style={{ fontSize: '1.05rem' }}>
-            {c.phase === 'late' ? `${c.daysLate} day${c.daysLate > 1 ? 's' : ''} late` : PHASE[c.phase]}
+            {c.phase === 'late' ? x.late(c.daysLate) : x.phase[c.phase]}
           </div>
         </div>
       </div>
       <div className="grid-2">
         <div className="card tone-period">
-          <h3>Next period</h3>
+          <h3>{x.nextPeriod}</h3>
           <div className="stat">
             <div className="value">{fmtDate(next.start.date)}</div>
             <div className="label">
@@ -48,29 +41,27 @@ function PartnerSummary({ view, today }: { view: PartnerView; today: string }) {
             </div>
           </div>
           <p>
-            <span className={`chip ${view.confidence}`}>{CONFIDENCE[view.confidence]}</span>
+            <span className={`chip ${view.confidence}`}>{t.confidence[view.confidence]}</span>
           </p>
         </div>
         {cur?.fertileStart && cur.fertileEnd && cur.ovulation ? (
           <div className="card tone-fertile">
-            <h3>Fertile window</h3>
+            <h3>{x.fertileWindow}</h3>
             <div className="stat">
               <div className="value" style={{ fontSize: '1.05rem' }}>
                 {fmtDate(cur.fertileStart)} – {fmtDate(cur.fertileEnd)}
               </div>
-              <div className="label">
-                Ovulation {c.ovulationConfirmed ? 'confirmed' : 'expected'} {fmtDate(cur.ovulation.date)}
-              </div>
+              <div className="label">{x.ovulation(c.ovulationConfirmed, fmtDate(cur.ovulation.date))}</div>
             </div>
           </div>
         ) : (
           <div className="card">
-            <h3>Period ends</h3>
+            <h3>{x.periodEnds}</h3>
             <div className="stat">
               <div className="value" style={{ fontSize: '1.05rem' }}>
                 {fmtDate(c.phase === 'period' && cur ? cur.periodEnd : next.periodEnd)}
               </div>
-              <div className="label">{c.phase === 'period' ? 'this period (expected)' : 'next period (expected)'}</div>
+              <div className="label">{c.phase === 'period' ? x.thisPeriod : x.nextPeriodExpected}</div>
             </div>
           </div>
         )}
@@ -81,15 +72,17 @@ function PartnerSummary({ view, today }: { view: PartnerView; today: string }) {
 
 export function PartnerPage({ id }: { id: string }) {
   const { today } = useStore();
+  const t = useT();
+  const x = t.partner;
   const toast = useToast();
   const [view, setView] = useState<PartnerView | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<'ended' | 'failed' | null>(null);
 
   useEffect(() => {
     api.shares
       .view(id, today)
       .then(setView)
-      .catch((e: unknown) => setError(e instanceof ApiError && e.status === 404 ? 'This share has ended.' : "Couldn't load the shared cycle."));
+      .catch((e: unknown) => setError(e instanceof ApiError && e.status === 404 ? 'ended' : 'failed'));
   }, [id, today]);
 
   const days = useMemo(() => new Map(view?.days.map((d) => [d.date, d.data]) ?? []), [view]);
@@ -99,15 +92,15 @@ export function PartnerPage({ id }: { id: string }) {
   return (
     <>
       <header className="page-header">
-        <button className="icon-btn" aria-label="Back" onClick={() => goBack('/')}>
+        <button className="icon-btn" aria-label={t.common.back} onClick={() => goBack('/')}>
           <Icon name="left" />
         </button>
-        <h1 style={{ fontSize: '1.3rem' }}>{view ? `${view.owner.name}'s cycle` : 'Shared cycle'}</h1>
+        <h1 style={{ fontSize: '1.3rem' }}>{view ? t.sharing.cycleOf(view.owner.name) : x.sharedCycle}</h1>
         <span style={{ width: 40 }} />
       </header>
       {error && (
         <div className="card">
-          <p>{error}</p>
+          <p>{error === 'ended' ? x.ended : x.loadFailed}</p>
         </div>
       )}
       {view && input && (
@@ -117,47 +110,46 @@ export function PartnerPage({ id }: { id: string }) {
           </div>
           {view.scopes.includes('wellbeing') && (
             <div className="card">
-              <h3>Today</h3>
+              <h3>{x.today}</h3>
               {todayData?.symptoms?.length || todayData?.mood?.length ? (
                 <div className="seg">
                   {todayData.mood?.map((m) => (
                     <span key={m} className="chip medium">
-                      {LABELS.mood[m]}
+                      {t.labels.mood[m]}
                     </span>
                   ))}
                   {todayData.symptoms?.map((s) => (
                     <span key={s} className="chip">
-                      {LABELS.symptoms[s]}
+                      {t.labels.symptoms[s]}
                     </span>
                   ))}
                 </div>
               ) : (
-                <p className="small muted">Nothing logged today.</p>
+                <p className="small muted">{x.nothingToday}</p>
               )}
             </div>
           )}
           <MonthCalendar input={input} days={days} today={today} />
           <Legend fertility={view.scopes.includes('fertility')} />
           {view.stats && view.stats.mean !== null && (
-            <div className="card small">
-              Average cycle {view.stats.mean} days{view.stats.sd !== null && ` (± ${view.stats.sd})`}, range {view.stats.min}–{view.stats.max} days
-              {view.stats.periodMean !== null && `, period ${view.stats.periodMean} days`}.
-            </div>
+            <div className="card small">{x.stats(view.stats.mean, view.stats.sd, view.stats.min, view.stats.max, view.stats.periodMean)}</div>
           )}
           <p className="hint center">
-            Shared by {view.owner.name}: period predictions{view.scopes.map((s) => `, ${SCOPE_LABELS[s].title.toLowerCase()}`).join('')}. Notes and
-            intimate details are never shared.
+            {x.sharedBy(
+              view.owner.name,
+              view.scopes.map((s) => t.scopes[s].inline),
+            )}
           </p>
           <button
             className="btn danger"
             onClick={async () => {
-              if (!confirm(`Stop viewing ${view.owner.name}'s cycle? They would need to invite you again.`)) return;
+              if (!confirm(x.stopConfirm(view.owner.name))) return;
               await api.shares.end(id);
-              toast('You no longer see this cycle');
+              toast(x.stopped);
               navigate('/', { replace: true });
             }}
           >
-            Stop viewing
+            {x.stop}
           </button>
         </div>
       )}
@@ -168,6 +160,8 @@ export function PartnerPage({ id }: { id: string }) {
 /** Compact cards on Today for cycles shared with the user. */
 export function PartnerCards() {
   const { today } = useStore();
+  const t = useT();
+  const x = t.partner;
   const [items, setItems] = useState<{ share: ShareSummary; view: PartnerView | null }[]>([]);
 
   useEffect(() => {
@@ -192,17 +186,17 @@ export function PartnerCards() {
         const next = view?.predictions[1];
         const c = view?.current;
         return (
-          <button key={share.id} className="card spread" style={{ textAlign: 'left', width: '100%' }} onClick={() => navigate(`/partner/${share.id}`)}>
+          <button key={share.id} className="card spread" style={{ textAlign: 'start', width: '100%' }} onClick={() => navigate(`/partner/${share.id}`)}>
             <div>
-              <h2>{share.name}'s cycle</h2>
+              <h2>{t.sharing.cycleOf(share.name)}</h2>
               <p className="small muted">
                 {!view
-                  ? 'Unavailable'
+                  ? x.card.unavailable
                   : view.paused
-                    ? 'Predictions paused'
+                    ? x.card.paused
                     : c && next
-                      ? `Day ${c.cycleDay} · ${c.phase === 'late' ? `${c.daysLate} d late` : PHASE[c.phase].toLowerCase()} · next period ${relDays(today, next.start.date)}`
-                      : 'No cycle logged yet'}
+                      ? x.card.summary(c.cycleDay, c.phase === 'late' ? x.card.late(c.daysLate) : x.phase[c.phase], relDays(today, next.start.date))
+                      : x.card.noCycle}
               </p>
             </div>
             <span className="icon-btn" aria-hidden="true">
@@ -216,6 +210,8 @@ export function PartnerCards() {
 }
 
 export function InviteAccept() {
+  const t = useT();
+  const x = t.invite;
   const toast = useToast();
   // The code lives in the URL fragment (never sent to the server in requests or logs).
   const [code] = useState(() => location.hash.slice(1));
@@ -225,32 +221,32 @@ export function InviteAccept() {
 
   useEffect(() => {
     history.replaceState(null, '', '/invite');
-    if (!code) return setError('This invite link is incomplete.');
+    if (!code) return setError(x.incomplete);
     api.shares
       .preview(code)
       .then(setPreview)
-      .catch(() => setError('This invite is invalid, expired or already used.'));
+      .catch(() => setError(x.invalid));
   }, [code]);
 
   return (
     <>
       <header className="page-header">
-        <h1>Invitation</h1>
+        <h1>{x.title}</h1>
       </header>
       <div className="card stack">
         {error && <p>{error}</p>}
-        {preview?.own && <p>This is your own invite link — send it to your partner instead.</p>}
+        {preview?.own && <p>{x.own}</p>}
         {preview && !preview.own && (
           <>
-            <h2>{preview.name} wants to share their cycle with you</h2>
-            <p className="small muted">You'll see, read-only:</p>
+            <h2>{x.wants(preview.name)}</h2>
+            <p className="small muted">{x.youllSee}</p>
             <ul className="small">
-              <li>Period predictions and cycle day</li>
+              <li>{x.always}</li>
               {preview.scopes.map((s) => (
-                <li key={s}>{SCOPE_LABELS[s as keyof typeof SCOPE_LABELS]?.body}</li>
+                <li key={s}>{t.scopes[s as ShareScope]?.body}</li>
               ))}
             </ul>
-            <p className="hint">Notes and intimate details are never shared. {preview.name} can stop sharing at any time.</p>
+            <p className="hint">{x.never(preview.name)}</p>
             <button
               className="btn primary"
               disabled={busy}
@@ -258,21 +254,21 @@ export function InviteAccept() {
                 setBusy(true);
                 try {
                   const { id } = await api.shares.accept(code);
-                  toast('Invitation accepted');
+                  toast(x.accepted);
                   navigate(`/partner/${id}`, { replace: true });
                 } catch {
-                  setError('This invite could not be accepted.');
+                  setError(x.couldNotAccept);
                 } finally {
                   setBusy(false);
                 }
               }}
             >
-              Accept
+              {x.accept}
             </button>
           </>
         )}
         <button className="btn" onClick={() => navigate('/', { replace: true })}>
-          Not now
+          {x.notNow}
         </button>
       </div>
     </>

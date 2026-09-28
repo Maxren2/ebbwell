@@ -258,6 +258,27 @@ describe('notifications', () => {
     expect(await runReminders(store, send, new Date(`${addDays(current, 27)}T09:00:00Z`))).toBe(1);
     expect(pushed.at(-1)!.payload).toMatchObject({ body: "Alice's period is expected tomorrow" });
   });
+
+  it("writes reminders in the user's language (device language when set to automatic)", async () => {
+    const a = signIn('Alice');
+    store.savePushSubscription('s1', a.user.id, subscription(), 'ua');
+    settingsFor(a.user.id, (s) => {
+      s.notifications.timezone = 'Europe/Zurich';
+      s.notifications.temperature = { enabled: true, time: '06:30' };
+      s.notifications.language = 'de';
+    });
+    await runReminders(store, send, new Date('2026-06-10T04:31:00Z'));
+    expect(pushed.at(-1)!.payload.body).toBe('Zeit für deinen Morgeneintrag');
+
+    settingsFor(a.user.id, (s) => {
+      s.notifications.timezone = 'Europe/Zurich';
+      s.notifications.temperature = { enabled: true, time: '06:30' };
+      s.notifications.language = 'de';
+      s.language = 'fr';
+    });
+    await runReminders(store, send, new Date('2026-06-11T04:31:00Z'));
+    expect(pushed.at(-1)!.payload.body).toBe("C'est l'heure de votre point du matin");
+  });
 });
 
 // ---------------------------------------------------------------- sharing

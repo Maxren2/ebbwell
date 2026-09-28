@@ -7,10 +7,12 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { diffDays } from '../shared/dates.ts';
 import { analyze, type Analysis } from '../shared/engine.ts';
+import { messages, type Lang } from '../shared/i18n/index.ts';
 import type { Settings } from '../shared/schema.ts';
 import type { Config } from './config.ts';
 import { sha256 } from './crypto.ts';
 import type { PushSubscriptionRow, Store } from './db.ts';
+import { settingsLang } from './i18n.ts';
 
 export interface PushPayload {
   title: string;
@@ -83,29 +85,29 @@ function localNow(now: Date, timeZone: string): { date: string; minutes: number 
 
 const toMinutes = (hhmm: string) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3));
 
-function inDays(n: number): string {
-  return n === 0 ? 'today' : n === 1 ? 'tomorrow' : `in ${n} days`;
-}
-
-const GENERIC = 'A gentle reminder from Ebbwell';
-
-export function reminderText(kind: 'temperature' | 'log' | 'period' | 'fertile' | 'partner', discreet: boolean, detail: { days?: number; name?: string } = {}): string {
+export function reminderText(
+  kind: 'temperature' | 'log' | 'period' | 'fertile' | 'partner',
+  discreet: boolean,
+  detail: { days?: number; name?: string } = {},
+  lang: Lang = 'en',
+): string {
+  const t = messages(lang).push;
   if (discreet) {
-    if (kind === 'temperature') return 'Time for your morning check-in';
-    if (kind === 'log') return 'Time for your evening check-in';
-    return GENERIC;
+    if (kind === 'temperature') return t.morningDiscreet;
+    if (kind === 'log') return t.eveningDiscreet;
+    return t.generic;
   }
   switch (kind) {
     case 'temperature':
-      return 'Take your temperature before getting up';
+      return t.temperature;
     case 'log':
-      return "Log today's observations: mucus, symptoms, mood";
+      return t.log;
     case 'period':
-      return `Your period is expected ${inDays(detail.days ?? 0)}`;
+      return t.period(detail.days ?? 0);
     case 'fertile':
-      return 'Your fertile window is expected to start today';
+      return t.fertile;
     case 'partner':
-      return `${detail.name ?? 'Your partner'}'s period is expected ${inDays(detail.days ?? 0)}`;
+      return t.partner(detail.name, detail.days ?? 0);
   }
 }
 
@@ -128,6 +130,7 @@ export async function runReminders(store: Store, send: PushSender, now: Date = n
     try {
       const settings = store.getSettings(userId);
       const n = settings.notifications;
+      const lang = settingsLang(settings);
       const { date, minutes } = localNow(now, n.timezone);
       const due = (hhmm: string) => minutes >= toMinutes(hhmm) && minutes < toMinutes(hhmm) + DUE_WINDOW_MIN;
       const notify = async (kind: string, key: string, payload: Omit<PushPayload, 'title'>) => {
@@ -137,13 +140,13 @@ export async function runReminders(store: Store, send: PushSender, now: Date = n
 
       if (n.temperature.enabled && settings.track.temperature && due(n.temperature.time)) {
         if (!store.getDay(userId, date)?.temperature) {
-          await notify('temperature', date, { body: reminderText('temperature', n.discreet), tag: 'temperature', url: `/day/${date}` });
+          await notify('temperature', date, { body: reminderText('temperature', n.discreet, {}, lang), tag: 'temperature', url: `/day/${date}` });
         }
       }
       if (n.log.enabled && due(n.log.time)) {
         const day = store.getDay(userId, date);
         if (!day?.mucus && !day?.symptoms?.length && !day?.mood?.length) {
-          await notify('log', date, { body: reminderText('log', n.discreet), tag: 'log', url: `/day/${date}` });
+          await notify('log', date, { body: reminderText('log', n.discreet, {}, lang), tag: 'log', url: `/day/${date}` });
         }
       }
 
@@ -153,7 +156,7 @@ export async function runReminders(store: Store, send: PushSender, now: Date = n
           const next = analysis.predictions[1]?.start.date;
           if (n.period.enabled && next && !analysis.current?.inPeriod && diffDays(date, next) === n.period.daysBefore) {
             await notify('period', next, {
-              body: reminderText('period', n.discreet, { days: n.period.daysBefore }),
+              body: reminderText('period', n.discreet, { days: n.period.daysBefore }, lang),
               tag: 'period',
               url: '/',
             });
@@ -161,7 +164,7 @@ export async function runReminders(store: Store, send: PushSender, now: Date = n
           const cur = analysis.predictions[0];
           const confirmed = analysis.cycles.at(-1)?.ovulation?.confirmed;
           if (n.fertile.enabled && settings.goal !== 'track' && cur && !confirmed && date === cur.fertileStart) {
-            await notify('fertile', cur.fertileStart, { body: reminderText('fertile', n.discreet), tag: 'fertile', url: '/' });
+            await notify('fertile', cur.fertileStart, { body: reminderText('fertile', n.discreet, {}, lang), tag: 'fertile', url: '/' });
           }
         }
 
@@ -173,7 +176,7 @@ export async function runReminders(store: Store, send: PushSender, now: Date = n
             if (!next || owner.analysis.current?.inPeriod || diffDays(date, next) !== n.partner.daysBefore) continue;
             const name = store.getUser(share.ownerId)?.name.split(' ')[0];
             await notify(`partner:${share.id}`, next, {
-              body: reminderText('partner', n.discreet, { days: n.partner.daysBefore, name }),
+              body: reminderText('partner', n.discreet, { days: n.partner.daysBefore, name }, lang),
               tag: `partner-${share.id}`,
               url: `/partner/${share.id}`,
             });
@@ -230,7 +233,7 @@ export function registerPushRoutes(app: FastifyInstance, deps: { store: Store; p
   app.post('/api/push/test', { config: { rateLimit: { max: 5, timeWindow: '1 minute' } } }, async (request) => {
     const delivered = await sendToUser(store, send, request.user!.id, {
       title: 'Ebbwell',
-      body: 'Notifications are working.',
+      body: messages(settingsLang(store.getSettings(request.user!.id))).push.test,
       tag: 'test',
       url: '/settings',
     });

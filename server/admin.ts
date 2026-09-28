@@ -6,7 +6,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import type { AccessPolicy } from './access.ts';
-import { changePassword, localAccountsAllowed } from './auth.ts';
+import { changePassword, localAccountsAllowed, passwordErrorText } from './auth.ts';
 import { USERNAME_RE, oidcEnabled, type Config } from './config.ts';
 import type { Store } from './db.ts';
 import { hashSecret, temporaryPassword, verifySecret } from './passwords.ts';
@@ -42,7 +42,7 @@ export function registerAdminRoutes(app: FastifyInstance, deps: { config: Config
     const body = z.object({ current: z.string().max(128), password: z.string().max(128), confirm: z.string().max(128) }).safeParse(request.body);
     if (!body.success) return reply.code(400).send({ error: 'invalid' });
     const result = await changePassword(store, user, body.data);
-    if (result !== 'ok') return reply.code(400).send({ error: 'rejected', message: result });
+    if (result !== 'ok') return reply.code(400).send({ error: 'rejected', reason: result, message: passwordErrorText('en', result) });
     store.deleteUserSessions(user.id, request.sessionId);
     store.audit(user.id, 'password-changed');
     return reply.code(204).send();

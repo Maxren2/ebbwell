@@ -3,6 +3,7 @@ import { analyze, type Analysis } from '../../shared/engine.ts';
 import { localToday } from '../../shared/dates.ts';
 import { isEmptyDay, type DayData, type Settings } from '../../shared/schema.ts';
 import { ApiError, LOCKED_EVENT, api, type Me } from './api.ts';
+import { deviceLanguage, useI18n } from './i18n.tsx';
 
 interface Store {
   me: Me;
@@ -54,6 +55,7 @@ export function StoreProvider(props: {
   const [locked, setLocked] = useState(false);
   const [lockTimeout, setLockTimeout] = useState<number | null>(null);
   const today = useToday();
+  const { setPreference } = useI18n();
   const lastActivity = useRef(Date.now());
   const lastPing = useRef(Date.now());
 
@@ -82,9 +84,13 @@ export function StoreProvider(props: {
       setLocked(false);
       setError(null);
       void refreshLock().catch(() => {});
+      setPreference(m.settings.language);
+      // Reminders are written on the server in this device's time zone and language.
       const tz = deviceTimeZone();
-      if (m.settings.notifications.timezone !== tz) {
-        const saved = await api.saveSettings({ ...m.settings, notifications: { ...m.settings.notifications, timezone: tz } }).catch(() => null);
+      const language = deviceLanguage();
+      const n = m.settings.notifications;
+      if (n.timezone !== tz || n.language !== language) {
+        const saved = await api.saveSettings({ ...m.settings, notifications: { ...n, timezone: tz, language } }).catch(() => null);
         if (saved) setMe({ ...m, settings: saved });
       }
     } catch (err) {
@@ -92,7 +98,7 @@ export function StoreProvider(props: {
       // fetch() rejects with a TypeError on network failure (server unreachable / offline).
       setError(!navigator.onLine || err instanceof TypeError ? 'offline' : (err as Error).message);
     }
-  }, [refreshLock]);
+  }, [refreshLock, setPreference]);
 
   useEffect(() => {
     void reload();
@@ -160,8 +166,9 @@ export function StoreProvider(props: {
       if (!me) return;
       const saved = await api.saveSettings({ ...me.settings, ...patch });
       setMe({ ...me, settings: saved });
+      setPreference(saved.language);
     },
-    [me],
+    [me, setPreference],
   );
 
   const analysis = useMemo(() => {

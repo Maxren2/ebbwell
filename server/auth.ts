@@ -8,6 +8,8 @@ import type { AppLock, SessionRow, Store, User } from './db.ts';
 import { dummyHash, hashSecret, verifySecret } from './passwords.ts';
 import { checkSecondFactor, nextStep, twoFactorSetupRequired } from './twofactor.ts';
 import { generateRecoveryCodes, generateSecret, hashRecoveryCode, otpauthUri, qrSvg, verifyTotp } from './totp.ts';
+import { messages, textDirection, type Lang } from '../shared/i18n/index.ts';
+import { requestLang } from './i18n.ts';
 
 /** HTTPS: host-locked, Secure cookie. */
 export const SESSION_COOKIE = '__Host-ebbwell_session';
@@ -128,36 +130,26 @@ export class Sessions {
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
-function page(title: string, body: string) {
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+export function page(lang: Lang, title: string, body: string) {
+  return `<!doctype html><html lang="${lang}" dir="${textDirection(lang)}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex"><title>Ebbwell</title><link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="/auth.css"></head>
 <body><main><img src="/icon-192.png" alt="" class="logo"><h1>${esc(title)}</h1>${body}</main></body></html>`;
 }
 
-export function recoveryCodesPage(codes: string[], next: string) {
+export function recoveryCodesPage(lang: Lang, codes: string[], next: string) {
+  const t = messages(lang).auth;
   return page(
-    'Save your recovery codes',
-    `<p>Each code works once, if you lose access to your authenticator app. Store them somewhere safe (a password manager or on paper).</p>
-<ol class="codes">${codes.map((c) => `<li><code>${esc(c)}</code></li>`).join('')}</ol>
-<p class="hint">They won't be shown again. Other devices were signed out.</p>
-<a class="button" href="${esc(next)}">I saved them — continue</a>`,
+    lang,
+    t.recoveryTitle,
+    `<p>${esc(t.recoveryIntro)}</p>
+<ol class="codes" dir="ltr">${codes.map((c) => `<li><code>${esc(c)}</code></li>`).join('')}</ol>
+<p class="hint">${esc(t.recoveryHint)}</p>
+<a class="button" href="${esc(next)}">${esc(t.recoveryContinue)}</a>`,
   );
 }
 
-const message = (title: string, text: string, action = '<a class="button" href="/auth/login">Try again</a>') =>
-  page(title, `<p>${esc(text)}</p><p>${action}</p>`);
-
-const LOGIN_ERRORS: Record<string, string> = {
-  invalid: 'Wrong username or password.',
-  locked: 'Too many failed attempts. Try again in 15 minutes.',
-  disabled: 'This account is disabled. Contact your administrator.',
-  expired: 'The sign-in form expired. Please try again.',
-};
-
-const CODE_ERRORS: Record<string, string> = {
-  invalid: 'That code is not valid. Check the time on your phone, or use a recovery code.',
-  expired: 'The form expired. Please try again.',
-};
+const message = (lang: Lang, title: string, text: string, action?: string) =>
+  page(lang, title, `<p>${esc(text)}</p><p>${action ?? `<a class="button" href="/auth/login">${esc(messages(lang).auth.tryAgain)}</a>`}</p>`);
 
 export async function registerAuth(
   app: FastifyInstance,
@@ -210,28 +202,28 @@ export async function registerAuth(
   if (config.AUTH_MODE === 'standard') {
     app.get<{ Querystring: { reauth?: string; error?: string } }>('/auth/login', authLimit, async (request, reply) => {
       const reauth = request.query.reauth === '1' ? '?reauth=1' : '';
+      const lang = requestLang(request);
+      const t = messages(lang).auth;
       reply.header('Cache-Control', 'no-store');
       if (!localAccountsAllowed(request.access)) {
         if (useOidc) return reply.redirect(`/auth/oidc${reauth}`);
-        return reply
-          .code(403)
-          .type('text/html')
-          .send(message('Sign-in unavailable', 'Signing in is not allowed from this network. Use Ebbwell from your local network.', ''));
+        return reply.code(403).type('text/html').send(message(lang, t.unavailableTitle, t.networkNotAllowed, ''));
       }
-      const error = LOGIN_ERRORS[request.query.error ?? ''];
+      const error = t.loginErrors[request.query.error ?? ''];
       const token = formToken(request, reply);
       const sso = useOidc
-        ? `<div class="or"><span>or</span></div><a class="button secondary" href="/auth/oidc${reauth}">Sign in with ${esc(config.OIDC_PROVIDER_NAME)}</a>`
+        ? `<div class="or"><span>${esc(t.or)}</span></div><a class="button secondary" href="/auth/oidc${reauth}">${esc(t.signInWith(config.OIDC_PROVIDER_NAME))}</a>`
         : '';
       return reply.type('text/html').send(
         page(
-          'Sign in to Ebbwell',
+          lang,
+          t.signInTitle,
           `${error ? `<p class="error" role="alert">${esc(error)}</p>` : ''}
 <form method="post" action="/auth/local">
   <input type="hidden" name="csrf" value="${token}">
-  <label>Username<input name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required maxlength="32"></label>
-  <label>Password<input name="password" type="password" autocomplete="current-password" required maxlength="128"></label>
-  <button type="submit">Sign in</button>
+  <label>${esc(t.username)}<input name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required maxlength="32" dir="ltr"></label>
+  <label>${esc(t.password)}<input name="password" type="password" autocomplete="current-password" required maxlength="128"></label>
+  <button type="submit">${esc(t.signIn)}</button>
 </form>${sso}`,
         ),
       );
@@ -242,7 +234,8 @@ export async function registerAuth(
     app.post('/auth/local', passwordLimit, async (request, reply) => {
       if (!localAccountsAllowed(request.access)) {
         store.audit(null, 'login-local-refused-network');
-        return reply.code(403).type('text/html').send(message('Sign-in unavailable', 'Password sign-in is not allowed from this network.', ''));
+        const lang = requestLang(request);
+        return reply.code(403).type('text/html').send(message(lang, messages(lang).auth.unavailableTitle, messages(lang).auth.passwordNotAllowed, ''));
       }
       const body = (request.body ?? {}) as Record<string, unknown>;
       if (!formTokenValid(request, body.csrf)) return reply.redirect('/auth/login?error=expired', 303);
@@ -280,18 +273,21 @@ export async function registerAuth(
     const passwordPage = (request: FastifyRequest, reply: FastifyReply, error?: string) => {
       const forced = request.user!.mustChangePassword;
       const token = formToken(request, reply);
+      const lang = requestLang(request);
+      const t = messages(lang).auth;
       return reply.type('text/html').send(
         page(
-          forced ? 'Choose your password' : 'Change password',
-          `${forced ? '<p>Your account uses a temporary password. Choose your own to continue.</p>' : ''}
+          lang,
+          forced ? t.choosePasswordTitle : t.changePasswordTitle,
+          `${forced ? `<p>${esc(t.temporaryIntro)}</p>` : ''}
 ${error ? `<p class="error" role="alert">${esc(error)}</p>` : ''}
 <form method="post" action="/auth/password">
   <input type="hidden" name="csrf" value="${token}">
   <input type="hidden" name="username" autocomplete="username" value="${esc(request.user!.username ?? '')}">
-  ${forced ? '' : '<label>Current password<input name="current" type="password" autocomplete="current-password" required maxlength="128"></label>'}
-  <label>New password (at least ${MIN_PASSWORD_LENGTH} characters)<input name="password" type="password" autocomplete="new-password" required minlength="${MIN_PASSWORD_LENGTH}" maxlength="128"></label>
-  <label>Repeat new password<input name="confirm" type="password" autocomplete="new-password" required maxlength="128"></label>
-  <button type="submit">Save password</button>
+  ${forced ? '' : `<label>${esc(t.currentPassword)}<input name="current" type="password" autocomplete="current-password" required maxlength="128"></label>`}
+  <label>${esc(t.newPassword(MIN_PASSWORD_LENGTH))}<input name="password" type="password" autocomplete="new-password" required minlength="${MIN_PASSWORD_LENGTH}" maxlength="128"></label>
+  <label>${esc(t.repeatPassword)}<input name="confirm" type="password" autocomplete="new-password" required maxlength="128"></label>
+  <button type="submit">${esc(t.savePassword)}</button>
 </form>`,
         ),
       );
@@ -309,13 +305,13 @@ ${error ? `<p class="error" role="alert">${esc(error)}</p>` : ''}
       const user = request.user!;
       if (user.kind !== 'local' || !localAccountsAllowed(request.access)) return reply.redirect('/', 303);
       const body = (request.body ?? {}) as Record<string, unknown>;
-      if (!formTokenValid(request, body.csrf)) return passwordPage(request, reply, 'The form expired. Please try again.');
+      if (!formTokenValid(request, body.csrf)) return passwordPage(request, reply, messages(requestLang(request)).auth.formExpired);
       const result = await changePassword(store, user, {
         current: user.mustChangePassword ? undefined : String(body.current ?? ''),
         password: String(body.password ?? ''),
         confirm: String(body.confirm ?? ''),
       });
-      if (result !== 'ok') return passwordPage(request, reply, result);
+      if (result !== 'ok') return passwordPage(request, reply, passwordErrorText(requestLang(request), result));
       store.deleteUserSessions(user.id, request.sessionId);
       store.audit(user.id, 'password-changed');
       return reply.redirect(nextStep(config, store.getUser(user.id)!), 303);
@@ -338,18 +334,21 @@ ${error ? `<p class="error" role="alert">${esc(error)}</p>` : ''}
 
     const codePage = (request: FastifyRequest, reply: FastifyReply, error?: string) => {
       const token = formToken(request, reply);
+      const lang = requestLang(request);
+      const t = messages(lang).auth;
       return reply.type('text/html').send(
         page(
-          'Two-factor authentication',
-          `<p>Enter the 6-digit code from your authenticator app.</p>
+          lang,
+          t.twoFactorTitle,
+          `<p>${esc(t.enterCode)}</p>
 ${error ? `<p class="error" role="alert">${esc(error)}</p>` : ''}
 <form method="post" action="/auth/2fa">
   <input type="hidden" name="csrf" value="${token}">
-  <label>Code<input name="code" autocomplete="one-time-code" inputmode="numeric" autocapitalize="none" spellcheck="false" required maxlength="20" autofocus></label>
-  <button type="submit">Verify</button>
+  <label>${esc(t.code)}<input name="code" autocomplete="one-time-code" inputmode="numeric" autocapitalize="none" spellcheck="false" required maxlength="20" autofocus dir="ltr"></label>
+  <button type="submit">${esc(t.verify)}</button>
 </form>
-<p class="hint">Lost your phone? Enter one of your recovery codes instead.</p>
-<p><a href="/auth/login">Start over</a></p>`,
+<p class="hint">${esc(t.lostPhone)}</p>
+<p><a href="/auth/login">${esc(t.startOver)}</a></p>`,
         ),
       );
     };
@@ -357,7 +356,7 @@ ${error ? `<p class="error" role="alert">${esc(error)}</p>` : ''}
     app.get<{ Querystring: { error?: string } }>('/auth/2fa', authLimit, async (request, reply) => {
       reply.header('Cache-Control', 'no-store');
       if (!localAccountsAllowed(request.access) || !pendingUser(request)) return reply.redirect('/auth/login');
-      return codePage(request, reply, CODE_ERRORS[request.query.error ?? '']);
+      return codePage(request, reply, messages(requestLang(request)).auth.codeErrors[request.query.error ?? '']);
     });
 
     app.post('/auth/2fa', passwordLimit, async (request, reply) => {
@@ -396,22 +395,25 @@ ${error ? `<p class="error" role="alert">${esc(error)}</p>` : ''}
       const token = formToken(request, reply);
       const uri = otpauthUri(user.username ?? user.name, secret);
       const grouped = secret.match(/.{1,4}/g)!.join(' ');
+      const lang = requestLang(request);
+      const t = messages(lang).auth;
       return reply.type('text/html').send(
         page(
-          'Set up two-factor authentication',
-          `${forced ? '<p>Your administrator requires two-factor authentication for password sign-in.</p>' : ''}
-<p>Scan this code with an authenticator app (Aegis, 2FAS, Google or Microsoft Authenticator, 1Password…).</p>
+          lang,
+          t.setupTitle,
+          `${forced ? `<p>${esc(t.setupRequired)}</p>` : ''}
+<p>${esc(t.scan)}</p>
 <div class="qr">${await qrSvg(uri)}</div>
-<p class="hint">Can't scan? Enter this key manually: <code>${esc(grouped)}</code></p>
+<p class="hint">${esc(t.cantScan)} <code dir="ltr">${esc(grouped)}</code></p>
 ${error ? `<p class="error" role="alert">${esc(error)}</p>` : ''}
 <form method="post" action="/auth/2fa/setup">
   <input type="hidden" name="csrf" value="${token}">
   <input type="hidden" name="username" autocomplete="username" value="${esc(user.username ?? '')}">
-  ${forced ? '' : '<label>Current password<input name="password" type="password" autocomplete="current-password" required maxlength="128"></label>'}
-  <label>6-digit code from the app<input name="code" autocomplete="one-time-code" inputmode="numeric" required maxlength="8"></label>
-  <button type="submit">Turn on two-factor authentication</button>
+  ${forced ? '' : `<label>${esc(t.currentPassword)}<input name="password" type="password" autocomplete="current-password" required maxlength="128"></label>`}
+  <label>${esc(t.codeFromApp)}<input name="code" autocomplete="one-time-code" inputmode="numeric" required maxlength="8" dir="ltr"></label>
+  <button type="submit">${esc(t.turnOn)}</button>
 </form>
-${forced ? '' : '<p><a href="/settings">Cancel</a></p>'}`,
+${forced ? '' : `<p><a href="/settings">${esc(messages(lang).common.cancel)}</a></p>`}`,
         ),
       );
     };
@@ -448,20 +450,21 @@ ${forced ? '' : '<p><a href="/settings">Cancel</a></p>'}`,
       const secret = readSetup(request);
       if (!secret) return reply.redirect('/auth/2fa/setup', 303);
       const body = (request.body ?? {}) as Record<string, unknown>;
-      if (!formTokenValid(request, body.csrf)) return setupPage(request, reply, secret, 'The form expired. Please try again.');
+      const t = messages(requestLang(request));
+      if (!formTokenValid(request, body.csrf)) return setupPage(request, reply, secret, t.auth.formExpired);
       if (!twoFactorSetupRequired(config, user)) {
         const hash = store.getPasswordHash(user.id);
-        if (!hash || !(await verifySecret(String(body.password ?? ''), hash))) return setupPage(request, reply, secret, 'Your current password is wrong.');
+        if (!hash || !(await verifySecret(String(body.password ?? ''), hash))) return setupPage(request, reply, secret, t.passwordErrors['wrong-current']);
       }
       const step = verifyTotp(secret, String(body.code ?? ''), -1);
-      if (step === null) return setupPage(request, reply, secret, 'That code is not valid. Check the time on your phone and try again.');
+      if (step === null) return setupPage(request, reply, secret, t.auth.invalidSetupCode);
 
       const codes = generateRecoveryCodes();
       store.setTotp(user.id, { secret, lastStep: step, recovery: codes.map(hashRecoveryCode), enabledAt: Date.now() });
       reply.clearCookie(setupCookie(request), request.access.secure ? secureCookie : lanCookie);
       store.deleteUserSessions(user.id, request.sessionId);
       store.audit(user.id, '2fa-enabled');
-      return reply.type('text/html').send(recoveryCodesPage(codes, '/'));
+      return reply.type('text/html').send(recoveryCodesPage(requestLang(request), codes, '/'));
     });
   }
 
@@ -493,7 +496,8 @@ ${forced ? '' : '<p><a href="/settings">Cancel</a></p>'}`,
         oidcConfig = await getConfig();
       } catch (err) {
         app.log.error({ err }, 'OIDC discovery failed');
-        return reply.code(503).type('text/html').send(message('Sign-in unavailable', 'The identity provider could not be reached.'));
+        const lang = requestLang(request);
+        return reply.code(503).type('text/html').send(message(lang, messages(lang).auth.unavailableTitle, messages(lang).auth.providerUnreachable));
       }
       const flow: Flow = {
         verifier: oidc.randomPKCECodeVerifier(),
@@ -519,6 +523,8 @@ ${forced ? '' : '<p><a href="/settings">Cancel</a></p>'}`,
     app.get('/auth/callback', authLimit, async (request, reply) => {
       const raw = request.cookies[FLOW_COOKIE];
       reply.clearCookie(FLOW_COOKIE, secureCookie);
+      const lang = requestLang(request);
+      const t = messages(lang).auth;
       let flow: Flow | null = null;
       try {
         flow = raw ? cipher.decryptJson<Flow>(raw, 'oidc-flow') : null;
@@ -526,7 +532,7 @@ ${forced ? '' : '<p><a href="/settings">Cancel</a></p>'}`,
         flow = null;
       }
       if (!flow || flow.exp < Date.now()) {
-        return reply.code(400).type('text/html').send(message('Sign-in expired', 'The sign-in attempt expired or was started elsewhere.'));
+        return reply.code(400).type('text/html').send(message(lang, t.expiredTitle, t.expiredBody));
       }
       let claims: oidc.IDToken;
       try {
@@ -541,13 +547,13 @@ ${forced ? '' : '<p><a href="/settings">Cancel</a></p>'}`,
         claims = tokens.claims()!;
       } catch (err) {
         request.log.warn({ err: (err as Error).message }, 'OIDC callback rejected');
-        return reply.code(400).type('text/html').send(message('Sign-in failed', 'The identity provider response could not be verified.'));
+        return reply.code(400).type('text/html').send(message(lang, t.failedTitle, t.failedBody));
       }
 
       const groups = Array.isArray(claims.groups) ? (claims.groups as unknown[]).map(String) : [];
       if (config.OIDC_ALLOWED_GROUPS.length && !groups.some((g) => config.OIDC_ALLOWED_GROUPS.includes(g))) {
         store.audit(null, 'login-denied-group');
-        return reply.code(403).type('text/html').send(message('Access denied', 'Your account is not allowed to use this app.', ''));
+        return reply.code(403).type('text/html').send(message(lang, t.deniedTitle, t.deniedBody, ''));
       }
 
       const name = String(claims.name ?? claims.preferred_username ?? claims.given_name ?? 'You').slice(0, 100);
@@ -555,7 +561,7 @@ ${forced ? '' : '<p><a href="/settings">Cancel</a></p>'}`,
       const user = store.upsertUser(`${claims.iss}|${claims.sub}`, name, { isAdmin });
       if (user.disabled) {
         store.audit(user.id, 'login-denied-disabled');
-        return reply.code(403).type('text/html').send(message('Account disabled', 'This account is disabled. Contact your administrator.', ''));
+        return reply.code(403).type('text/html').send(message(lang, t.disabledTitle, t.disabledBody, ''));
       }
       const authTime = typeof claims.auth_time === 'number' ? claims.auth_time : 0;
       const fresh = flow.reauth && Date.now() / 1000 - authTime <= FRESH_AUTH_SEC;
@@ -564,6 +570,15 @@ ${forced ? '' : '<p><a href="/settings">Cancel</a></p>'}`,
       return reply.redirect(fresh ? '/settings#lock' : '/');
     });
   }
+
+  app.get('/signed-out.html', async (request, reply) => {
+    const lang = requestLang(request);
+    const t = messages(lang).auth;
+    return reply
+      .header('Cache-Control', 'no-cache')
+      .type('text/html')
+      .send(page(lang, t.signedOutTitle, `<p>${esc(t.signedOutBody)}</p><a class="button" href="/auth/login">${esc(t.signInAgain)}</a>`));
+  });
 
   app.post('/auth/logout', authLimit, async (request, reply) => {
     sessions.resolve(request, reply);
@@ -580,21 +595,28 @@ ${forced ? '' : '<p><a href="/settings">Cancel</a></p>'}`,
 
 const passwordSchema = z.string().min(MIN_PASSWORD_LENGTH).max(128);
 
-/** Shared by the password page and the settings API. Returns 'ok' or a user-facing error. */
+export type PasswordError = 'wrong-current' | 'length' | 'mismatch' | 'contains-username';
+
+/** Shared by the password page and the settings API. */
 export async function changePassword(
   store: Store,
   user: User,
   input: { current?: string; password: string; confirm: string },
-): Promise<string> {
+): Promise<'ok' | PasswordError> {
   if (input.current !== undefined) {
     const hash = store.getPasswordHash(user.id);
-    if (!hash || !(await verifySecret(input.current, hash))) return 'Your current password is wrong.';
+    if (!hash || !(await verifySecret(input.current, hash))) return 'wrong-current';
   }
-  if (!passwordSchema.safeParse(input.password).success) return `Use between ${MIN_PASSWORD_LENGTH} and 128 characters.`;
-  if (input.password !== input.confirm) return "The two passwords don't match.";
-  if (user.username && input.password.toLowerCase().includes(user.username)) return "Don't include your username in the password.";
+  if (!passwordSchema.safeParse(input.password).success) return 'length';
+  if (input.password !== input.confirm) return 'mismatch';
+  if (user.username && input.password.toLowerCase().includes(user.username)) return 'contains-username';
   store.setPassword(user.id, await hashSecret(input.password), false);
   return 'ok';
+}
+
+export function passwordErrorText(lang: Lang, error: PasswordError): string {
+  const t = messages(lang).passwordErrors;
+  return error === 'length' ? t.length(MIN_PASSWORD_LENGTH) : t[error];
 }
 
 export async function endSessionUrl(app: FastifyInstance, config: Config): Promise<string> {

@@ -1,74 +1,31 @@
 import { useEffect, useRef, useState } from 'react';
+import { LANGUAGES, LANGUAGE_NAMES } from '../../../shared/i18n/index.ts';
 import type { Settings } from '../../../shared/schema.ts';
-import { api, type SessionInfo } from '../api.ts';
+import { ApiError, api, type SessionInfo } from '../api.ts';
+import { fmtDateTime } from '../format.ts';
+import { deviceLanguage, useT } from '../i18n.tsx';
 import { useStore } from '../store.tsx';
 import { Seg, Switch, useToast } from '../ui.tsx';
 import { LockSection, NotificationsSection, SharingSection } from './SettingsExtra.tsx';
 import { AccountSection, AdminSection } from './Admin.tsx';
 
-const GOALS = { track: 'Track', conceive: 'Conceive', avoid: 'Avoid pregnancy' } as const;
-
-function deviceName(ua: string): string {
-  const os = /iPhone|iPad/.test(ua) ? (/iPad/.test(ua) ? 'iPad' : 'iPhone') : /Android/.test(ua) ? 'Android' : /Mac OS X/.test(ua) ? 'Mac' : /Windows/.test(ua) ? 'Windows' : /Linux/.test(ua) ? 'Linux' : 'Unknown device';
+function deviceName(ua: string, unknown: string): string {
+  const os = /iPhone|iPad/.test(ua) ? (/iPad/.test(ua) ? 'iPad' : 'iPhone') : /Android/.test(ua) ? 'Android' : /Mac OS X/.test(ua) ? 'Mac' : /Windows/.test(ua) ? 'Windows' : /Linux/.test(ua) ? 'Linux' : unknown;
   const browser = /Edg\//.test(ua) ? 'Edge' : /Firefox\//.test(ua) ? 'Firefox' : /Chrome\//.test(ua) ? 'Chrome' : /Safari\//.test(ua) ? 'Safari' : '';
   return browser ? `${os} · ${browser}` : os;
 }
 
-const EVENTS: Record<string, string> = {
-  login: 'Signed in',
-  logout: 'Signed out',
-  export: 'Data exported',
-  'import-merge': 'Data imported (merge)',
-  'import-replace': 'Data imported (replace)',
-  'sessions-revoked': 'Sessions revoked',
-  'login-reauth': 'Signed in again (PIN reset allowed)',
-  'lock-enabled': 'App lock turned on',
-  'lock-disabled': 'App lock turned off',
-  'pin-changed': 'PIN changed',
-  'unlock-failed': 'Wrong PIN entered',
-  'lock-lockout': 'Signed out after wrong PINs',
-  'biometric-added': 'Biometric unlock added',
-  'biometric-removed': 'Biometric unlock removed',
-  'push-subscribed': 'Notifications enabled on a device',
-  'share-invite-created': 'Partner invite created',
-  'share-accepted': 'Partner invite accepted',
-  'share-started': 'Partner started viewing your cycle',
-  'share-updated': 'Sharing settings changed',
-  'share-ended': 'Sharing ended',
-  'login-local': 'Signed in with password',
-  'login-local-2fa': 'Signed in with password + 2FA code',
-  'login-local-recovery-code': 'Signed in with a recovery code',
-  '2fa-failed': 'Wrong 2FA code entered',
-  '2fa-enabled': 'Two-factor authentication turned on',
-  '2fa-disabled': 'Two-factor authentication turned off',
-  '2fa-recovery-renewed': 'New recovery codes created',
-  '2fa-reset-by-admin': 'Two-factor reset by an administrator',
-  '2fa-reset-cli': 'Two-factor reset from the server',
-  'admin-2fa-reset': "You reset someone's two-factor",
-  'login-failed': 'Wrong password entered',
-  'login-locked': 'Account locked after wrong passwords',
-  'password-changed': 'Password changed',
-  'password-reset-by-admin': 'Password reset by an administrator',
-  'password-reset-cli': 'Password reset from the server',
-  'account-created-by-admin': 'Account created by an administrator',
-  'admin-user-created': 'You created an account',
-  'admin-password-reset': "You reset someone's password",
-  'admin-granted': 'You granted administrator rights',
-  'admin-revoked': 'You removed administrator rights',
-  'admin-user-disabled': 'You disabled an account',
-  'admin-user-enabled': 'You enabled an account',
-  'admin-user-deleted': 'You deleted an account',
-};
-
 export function SettingsView() {
   const { settings, saveSettings, me } = useStore();
+  const t = useT();
+  const s = t.settings;
   const toast = useToast();
 
   const update = async (patch: Partial<Settings>) => {
     try {
       await saveSettings(patch);
     } catch (e) {
-      toast(`Could not save: ${(e as Error).message}`);
+      toast(t.common.couldNotSave((e as Error).message));
     }
   };
   const track = (k: keyof Settings['track'], v: boolean) => update({ track: { ...settings.track, [k]: v } });
@@ -76,46 +33,54 @@ export function SettingsView() {
   return (
     <>
       <header className="page-header">
-        <h1>Settings</h1>
+        <h1>{s.title}</h1>
         <span className="sub">{me.name}</span>
       </header>
 
       <div className="stack">
         <section className="card stack">
-          <h3>Goal</h3>
+          <h3>{s.goal}</h3>
           <Seg
-            label="Goal"
+            label={s.goal}
             allowNone={false}
             value={settings.goal}
             options={['track', 'conceive', 'avoid'] as const}
-            labels={GOALS}
+            labels={s.goals}
             onChange={(v) => v && update({ goal: v })}
           />
           {settings.goal === 'avoid' && <NfpAcknowledge />}
-          <Switch
-            label="Pregnancy / pause mode"
-            hint="Stops predictions (pregnancy, postpartum, breastfeeding…). You can keep logging."
-            checked={settings.paused}
-            onChange={(v) => update({ paused: v })}
-          />
+          <Switch label={s.pause} hint={s.pauseHint} checked={settings.paused} onChange={(v) => update({ paused: v })} />
         </section>
 
         <section className="card">
-          <h3>What to track</h3>
-          <Switch label="Basal temperature" hint="Confirms ovulation — the key to reliable predictions." checked={settings.track.temperature} onChange={(v) => track('temperature', v)} />
-          <Switch label="Cervical mucus" hint="Identifies the fertile window as it happens." checked={settings.track.mucus} onChange={(v) => track('mucus', v)} />
-          <Switch label="Cervix" checked={settings.track.cervix} onChange={(v) => track('cervix', v)} />
-          <Switch label="LH tests" checked={settings.track.lh} onChange={(v) => track('lh', v)} />
-          <Switch label="Pregnancy tests" checked={settings.track.pregnancyTest} onChange={(v) => track('pregnancyTest', v)} />
-          <Switch label="Sex" checked={settings.track.sex} onChange={(v) => track('sex', v)} />
-          <Switch label="Symptoms" checked={settings.track.symptoms} onChange={(v) => track('symptoms', v)} />
-          <Switch label="Mood" checked={settings.track.mood} onChange={(v) => track('mood', v)} />
+          <h3>{s.whatToTrack}</h3>
+          <Switch label={s.track.temperature} hint={s.track.temperatureHint} checked={settings.track.temperature} onChange={(v) => track('temperature', v)} />
+          <Switch label={s.track.mucus} hint={s.track.mucusHint} checked={settings.track.mucus} onChange={(v) => track('mucus', v)} />
+          <Switch label={s.track.cervix} checked={settings.track.cervix} onChange={(v) => track('cervix', v)} />
+          <Switch label={s.track.lh} checked={settings.track.lh} onChange={(v) => track('lh', v)} />
+          <Switch label={s.track.pregnancyTest} checked={settings.track.pregnancyTest} onChange={(v) => track('pregnancyTest', v)} />
+          <Switch label={s.track.sex} checked={settings.track.sex} onChange={(v) => track('sex', v)} />
+          <Switch label={s.track.symptoms} checked={settings.track.symptoms} onChange={(v) => track('symptoms', v)} />
+          <Switch label={s.track.mood} checked={settings.track.mood} onChange={(v) => track('mood', v)} />
         </section>
 
         <section className="card stack">
-          <h3>Units & defaults</h3>
+          <h3>{s.units}</h3>
+          <label className="field">
+            <span>{s.language}</span>
+            <select value={settings.language} onChange={(e) => update({ language: e.target.value as Settings['language'] })}>
+              <option value="auto">
+                {s.languageAuto} ({LANGUAGE_NAMES[deviceLanguage()]})
+              </option>
+              {LANGUAGES.map((l) => (
+                <option key={l} value={l} lang={l}>
+                  {LANGUAGE_NAMES[l]}
+                </option>
+              ))}
+            </select>
+          </label>
           <Seg
-            label="Temperature unit"
+            label={s.temperatureUnit}
             allowNone={false}
             value={settings.temperatureUnit}
             options={['C', 'F'] as const}
@@ -123,8 +88,8 @@ export function SettingsView() {
             onChange={(v) => v && update({ temperatureUnit: v })}
           />
           <div className="grid-2">
-            <NumberSetting label="Cycle length until learned" value={settings.defaultCycleLength} min={18} max={60} onSave={(v) => update({ defaultCycleLength: v })} />
-            <NumberSetting label="Period length until learned" value={settings.defaultPeriodLength} min={1} max={12} onSave={(v) => update({ defaultPeriodLength: v })} />
+            <NumberSetting label={s.cycleLength} value={settings.defaultCycleLength} min={18} max={60} onSave={(v) => update({ defaultCycleLength: v })} />
+            <NumberSetting label={s.periodLength} value={settings.defaultPeriodLength} min={1} max={12} onSave={(v) => update({ defaultPeriodLength: v })} />
           </div>
         </section>
 
@@ -137,19 +102,16 @@ export function SettingsView() {
         <SecuritySection />
 
         <section className="card stack">
-          <h3>About</h3>
+          <h3>{s.about.title}</h3>
+          <p className="small muted">{s.about.body}</p>
           <p className="small muted">
-            Ebbwell estimates cycles from your own history and confirms ovulation from body signs (Sensiplan temperature and mucus rules). It is
-            not a medical device and not a contraceptive. See a clinician for missed periods, very irregular cycles, heavy bleeding or pain.
+            {s.about.sources} Bull et al. 2019 (npj Digital Medicine), Wilcox et al. 1995 (NEJM), Frank-Herrmann et al. 2007 (Human Reproduction),
+            FIGO 2018.
           </p>
           <p className="small muted">
-            Sources: Bull et al. 2019 (npj Digital Medicine), Wilcox et al. 1995 (NEJM), Frank-Herrmann et al. 2007 (Human Reproduction), FIGO
-            2018 menstrual definitions.
-          </p>
-          <p className="small muted">
-            Free software (AGPL-3.0-or-later).{' '}
+            {s.about.license}{' '}
             <a href="https://github.com/Maxren2/ebbwell" target="_blank" rel="noopener noreferrer">
-              Source code
+              {s.about.source}
             </a>
           </p>
         </section>
@@ -182,27 +144,25 @@ function NumberSetting(props: { label: string; value: number; min: number; max: 
 
 function NfpAcknowledge() {
   const { settings, saveSettings } = useStore();
+  const t = useT();
+  const s = t.settings;
   if (settings.nfpAcknowledged) {
     return (
       <div className="card tone-ovulation small">
-        Sensiplan evaluation is on (5-day / minus-8 rules, double check).{' '}
+        {s.nfpOn}{' '}
         <button className="btn" style={{ minHeight: 32, marginTop: 8 }} onClick={() => saveSettings({ nfpAcknowledged: false })}>
-          Turn off
+          {t.common.turnOff}
         </button>
       </div>
     );
   }
   return (
     <div className="card tone-warn stack small">
-      <strong>Before relying on Ebbwell to avoid pregnancy</strong>
-      <p>
-        The symptothermal method (Sensiplan) is highly effective only with correct use: daily temperature at waking, daily mucus observation,
-        and the rules learned from a qualified teacher or the official book. Typical use is less effective than perfect use. Ebbwell shows the
-        rule evaluation; mistakes in observations lead to mistakes in the result.
-      </p>
+      <strong>{s.nfpBeforeTitle}</strong>
+      <p>{s.nfpBeforeBody}</p>
       <label className="check">
         <input type="checkbox" onChange={(e) => e.target.checked && saveSettings({ nfpAcknowledged: true })} />
-        <span>I have learned the method and understand Ebbwell is not a medical device.</span>
+        <span>{s.nfpAck}</span>
       </label>
     </div>
   );
@@ -210,6 +170,7 @@ function NfpAcknowledge() {
 
 function DataSection() {
   const { reload } = useStore();
+  const d = useT().settings.data;
   const toast = useToast();
   const fileRef = useRef<HTMLInputElement>(null);
   const [mode, setMode] = useState<'merge' | 'replace'>('merge');
@@ -217,12 +178,12 @@ function DataSection() {
   const onFile = async (file: File) => {
     try {
       const payload = JSON.parse(await file.text());
-      if (mode === 'replace' && !confirm('Replace ALL your current entries with this file?')) return;
+      if (mode === 'replace' && !confirm(d.confirmReplace)) return;
       const res = await api.importData({ ...payload, mode });
       await reload();
-      toast(`Imported ${res.imported} days`);
+      toast(d.imported(res.imported));
     } catch (e) {
-      toast(`Import failed: ${(e as Error).message}`);
+      toast(d.importFailed((e as Error).message));
     } finally {
       if (fileRef.current) fileRef.current.value = '';
     }
@@ -230,34 +191,36 @@ function DataSection() {
 
   return (
     <section className="card stack">
-      <h3>Your data</h3>
-      <p className="small muted">Stored encrypted on your server. Exports are unencrypted — keep them somewhere safe.</p>
+      <h3>{d.title}</h3>
+      <p className="small muted">{d.body}</p>
       <div className="grid-2">
         <a className="btn" href="/api/export" download>
-          Export JSON
+          {d.exportJson}
         </a>
         <a className="btn" href="/api/export?format=csv" download>
-          Export CSV
+          {d.exportCsv}
         </a>
       </div>
       <div className="divider" />
       <Seg
-        label="Import mode"
+        label={d.importMode}
         allowNone={false}
         value={mode}
         options={['merge', 'replace'] as const}
-        labels={{ merge: 'Merge', replace: 'Replace all' }}
+        labels={{ merge: d.merge, replace: d.replace }}
         onChange={(v) => v && setMode(v)}
       />
       <input ref={fileRef} type="file" accept="application/json,.json" hidden onChange={(e) => e.target.files?.[0] && onFile(e.target.files[0])} />
       <button className="btn" onClick={() => fileRef.current?.click()}>
-        Import an Ebbwell JSON export…
+        {d.import}
       </button>
     </section>
   );
 }
 
 function SecuritySection() {
+  const t = useT();
+  const s = t.settings;
   const toast = useToast();
   const [sessions, setSessions] = useState<SessionInfo[] | null>(null);
   const [events, setEvents] = useState<{ at: number; event: string }[]>([]);
@@ -265,8 +228,8 @@ function SecuritySection() {
 
   const load = async () => {
     try {
-      const [s, a] = await Promise.all([api.sessions(), api.audit()]);
-      setSessions(s);
+      const [ss, a] = await Promise.all([api.sessions(), api.audit()]);
+      setSessions(ss);
       setEvents(a);
     } catch {
       /* shown as empty */
@@ -276,28 +239,26 @@ function SecuritySection() {
 
   const revoke = async (id: string) => {
     await api.revokeSession(id);
-    toast(id === 'others' ? 'Other devices signed out' : 'Device signed out');
+    toast(id === 'others' ? s.devices.othersSignedOut : s.devices.signedOut);
     void load();
   };
-
-  const fmt = (ms: number) => new Date(ms).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 
   return (
     <>
       <section className="card stack">
-        <h3>Signed-in devices</h3>
+        <h3>{s.devices.title}</h3>
         <div className="list">
-          {sessions?.map((s) => (
-            <div key={s.id} className="spread">
+          {sessions?.map((x) => (
+            <div key={x.id} className="spread">
               <div>
                 <div>
-                  {deviceName(s.userAgent)} {s.current && <span className="chip high">This device</span>}
+                  {deviceName(x.userAgent, s.devices.unknown)} {x.current && <span className="chip high">{s.devices.thisDevice}</span>}
                 </div>
-                <div className="small muted">Last active {fmt(s.lastSeenAt)}</div>
+                <div className="small muted">{s.devices.lastActive(fmtDateTime(x.lastSeenAt))}</div>
               </div>
-              {!s.current && (
-                <button className="btn" style={{ minHeight: 34 }} onClick={() => revoke(s.id)}>
-                  Sign out
+              {!x.current && (
+                <button className="btn" style={{ minHeight: 34 }} onClick={() => revoke(x.id)}>
+                  {t.common.signOut}
                 </button>
               )}
             </div>
@@ -305,16 +266,16 @@ function SecuritySection() {
         </div>
         {sessions && sessions.length > 1 && (
           <button className="btn" onClick={() => revoke('others')}>
-            Sign out all other devices
+            {s.devices.signOutOthers}
           </button>
         )}
         <details>
-          <summary className="small">Recent activity</summary>
+          <summary className="small">{s.devices.activity}</summary>
           <div className="list small muted">
             {events.map((e) => (
               <div key={`${e.at}-${e.event}`} className="spread">
-                <span>{EVENTS[e.event] ?? e.event}</span>
-                <span>{fmt(e.at)}</span>
+                <span>{t.events[e.event] ?? e.event}</span>
+                <span>{fmtDateTime(e.at)}</span>
               </div>
             ))}
           </div>
@@ -326,26 +287,30 @@ function SecuritySection() {
             location.assign(redirect);
           }}
         >
-          Sign out
+          {t.common.signOut}
         </button>
       </section>
 
       <section className="card stack">
-        <h3>Delete everything</h3>
-        <p className="small muted">Permanently deletes all your entries, settings and sessions from the server. Export first if you want a copy.</p>
+        <h3>{s.deleteAll.title}</h3>
+        <p className="small muted">{s.deleteAll.body}</p>
         <label className="field">
-          <span>Type DELETE to confirm</span>
-          <input type="text" autoComplete="off" value={confirmText} onChange={(e) => setConfirmText(e.target.value)} />
+          <span>{s.deleteAll.confirm}</span>
+          <input type="text" autoComplete="off" dir="ltr" value={confirmText} onChange={(e) => setConfirmText(e.target.value)} />
         </label>
         <button
           className="btn danger"
           disabled={confirmText !== 'DELETE'}
           onClick={async () => {
-            const { redirect } = await api.deleteAccount();
-            location.assign(redirect);
+            try {
+              const { redirect } = await api.deleteAccount();
+              location.assign(redirect);
+            } catch (e) {
+              toast(e instanceof ApiError && e.message === 'last-admin' ? s.deleteAll.lastAdmin : (e as Error).message);
+            }
           }}
         >
-          Delete all my data
+          {s.deleteAll.button}
         </button>
       </section>
     </>

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { isIsoDate } from '../../shared/dates.ts';
+import { I18nProvider, useT } from './i18n.tsx';
 import { navigate, usePath } from './router.ts';
 import { StoreProvider } from './store.tsx';
 import { Icon, ToastProvider, type IconName } from './ui.tsx';
@@ -12,12 +13,12 @@ import { SettingsView } from './views/Settings.tsx';
 import { LockScreen } from './views/LockScreen.tsx';
 import { InviteAccept, PartnerPage } from './views/Partner.tsx';
 
-const TABS: { path: string; label: string; icon: IconName }[] = [
-  { path: '/', label: 'Today', icon: 'today' },
-  { path: '/calendar', label: 'Calendar', icon: 'calendar' },
-  { path: '/chart', label: 'Chart', icon: 'chart' },
-  { path: '/insights', label: 'Insights', icon: 'insights' },
-  { path: '/settings', label: 'Settings', icon: 'settings' },
+const TABS: { path: string; label: 'today' | 'calendar' | 'chart' | 'insights' | 'settings'; icon: IconName }[] = [
+  { path: '/', label: 'today', icon: 'today' },
+  { path: '/calendar', label: 'calendar', icon: 'calendar' },
+  { path: '/chart', label: 'chart', icon: 'chart' },
+  { path: '/insights', label: 'insights', icon: 'insights' },
+  { path: '/settings', label: 'settings', icon: 'settings' },
 ];
 
 function useOnline() {
@@ -36,25 +37,26 @@ function useOnline() {
 }
 
 function Splash({ error }: { error: string | null }) {
+  const t = useT();
   return (
     <div className="splash">
       <img src="/icon-192.png" alt="" />
       {error === 'offline' ? (
         <>
-          <p>Can't reach your Ebbwell server. Your data is never stored on this device, so a connection is needed.</p>
+          <p>{t.app.unreachable}</p>
           <button className="btn" onClick={() => location.reload()}>
-            Retry
+            {t.common.retry}
           </button>
         </>
       ) : error ? (
         <>
-          <p>Couldn't load your data ({error}).</p>
+          <p>{t.app.loadFailed(error)}</p>
           <button className="btn" onClick={() => location.reload()}>
-            Retry
+            {t.common.retry}
           </button>
         </>
       ) : (
-        <p>Loading…</p>
+        <p>{t.app.loading}</p>
       )}
     </div>
   );
@@ -82,6 +84,15 @@ function Routes() {
 }
 
 export function App() {
+  return (
+    <I18nProvider>
+      <Shell />
+    </I18nProvider>
+  );
+}
+
+function Shell() {
+  const t = useT();
   const path = usePath();
   const online = useOnline();
   const active = TABS.find((t) => t.path !== '/' && path.startsWith(t.path))?.path ?? (/^\/(day|partner|invite)/.test(path) ? '' : '/');
@@ -90,14 +101,14 @@ export function App() {
     <ToastProvider>
       <StoreProvider fallback={(error) => <Splash error={error} />} lockScreen={(onUnlocked) => <LockScreen onUnlocked={onUnlocked} />}>
         <div className="app">
-          {!online && <div className="banner">Offline — changes can't be saved until you reconnect.</div>}
+          {!online && <div className="banner">{t.app.offline}</div>}
           <Routes />
         </div>
-        <nav className="tabbar" aria-label="Main">
-          {TABS.map((t) => (
-            <button key={t.path} aria-current={active === t.path ? 'page' : undefined} onClick={() => navigate(t.path)}>
-              <Icon name={t.icon} />
-              {t.label}
+        <nav className="tabbar" aria-label={t.nav.main}>
+          {TABS.map((tab) => (
+            <button key={tab.path} aria-current={active === tab.path ? 'page' : undefined} onClick={() => navigate(tab.path)}>
+              <Icon name={tab.icon} />
+              {t.nav[tab.label]}
             </button>
           ))}
         </nav>
