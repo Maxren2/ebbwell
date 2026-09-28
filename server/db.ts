@@ -118,6 +118,10 @@ const MIGRATIONS: string[] = [
   ALTER TABLE users ADD COLUMN locked_until INTEGER NOT NULL DEFAULT 0;
   CREATE UNIQUE INDEX users_username ON users(username) WHERE username IS NOT NULL;
   `,
+  `
+  -- Two-factor authentication (TOTP) for local accounts: encrypted {secret, lastStep, recovery hashes}.
+  ALTER TABLE users ADD COLUMN totp_enc TEXT;
+  `,
 ];
 
 export type AccountKind = 'oidc' | 'local' | 'dev';
@@ -130,6 +134,16 @@ export interface User {
   isAdmin: boolean;
   disabled: boolean;
   mustChangePassword: boolean;
+  twoFactor: boolean;
+}
+
+export interface TotpState {
+  secret: string;
+  /** Last accepted time step (replay protection). */
+  lastStep: number;
+  /** sha256 of unused recovery codes. */
+  recovery: string[];
+  enabledAt: number;
 }
 
 export interface UserSummary extends User {
@@ -208,12 +222,14 @@ const aad = {
   webauthn: (id: string) => `webauthn:${id}`,
   push: (id: string) => `push:${id}`,
   pushUa: (id: string) => `push-ua:${id}`,
+  totp: (userId: string) => `totp:${userId}`,
 };
 
 /** Every encrypted column, for key rotation. */
 const ENCRYPTED_COLUMNS: { table: string; column: string; keys: string[]; aad: (r: Row) => string }[] = [
   { table: 'users', column: 'profile_enc', keys: ['id'], aad: (r) => aad.profile(r.id as string) },
   { table: 'users', column: 'settings_enc', keys: ['id'], aad: (r) => aad.settings(r.id as string) },
+  { table: 'users', column: 'totp_enc', keys: ['id'], aad: (r) => aad.totp(r.id as string) },
   { table: 'days', column: 'data_enc', keys: ['user_id', 'date'], aad: (r) => aad.day(r.user_id as string, r.date as string) },
   { table: 'sessions', column: 'user_agent_enc', keys: ['id'], aad: (r) => aad.ua(r.id as string) },
   { table: 'meta', column: 'value_enc', keys: ['key'], aad: (r) => aad.meta(r.key as string) },
@@ -299,6 +315,7 @@ export class Store {
       isAdmin: row.is_admin === 1,
       disabled: row.disabled === 1,
       mustChangePassword: row.must_change_password === 1,
+      twoFactor: row.totp_enc !== null && row.totp_enc !== undefined,
     };
   }
 
@@ -369,6 +386,17 @@ export class Store {
 
   recordLogin(id: string) {
     this.db.prepare('UPDATE users SET failed_logins = 0, locked_until = 0, last_login_at = ? WHERE id = ?').run(Date.now(), id);
+  }
+
+  getTotp(id: string): TotpState | null {
+    const row = this.db.prepare('SELECT totp_enc FROM users WHERE id = ?').get(id) as { totp_enc: string | null } | undefined;
+    return row?.totp_enc ? this.cipher.decryptJson<TotpState>(row.totp_enc, aad.totp(id)) : null;
+  }
+
+  setTotp(id: string, state: TotpState | null) {
+    this.db
+      .prepare('UPDATE users SET totp_enc = ? WHERE id = ?')
+      .run(state ? this.cipher.encryptJson(state, aad.totp(id)) : null, id);
   }
 
   setAdmin(id: string, isAdmin: boolean) {

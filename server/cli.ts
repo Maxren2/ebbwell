@@ -4,6 +4,7 @@
 //   docker exec -it ebbwell node server/cli.ts create-user alice "Alice" --admin
 //   docker exec -it ebbwell node server/cli.ts set-admin alice on|off
 //   docker exec -it ebbwell node server/cli.ts enable alice
+//   docker exec -it ebbwell node server/cli.ts disable-2fa alice
 import { join } from 'node:path';
 import { USERNAME_RE, loadConfig } from './config.ts';
 import { Cipher } from './crypto.ts';
@@ -24,7 +25,7 @@ try {
   switch (command) {
     case 'list-users':
       for (const u of store.listUsers()) {
-        const flags = [u.kind, u.isAdmin && 'admin', u.disabled && 'disabled', u.lockedUntil > Date.now() && 'locked'].filter(Boolean).join(', ');
+        const flags = [u.kind, u.isAdmin && 'admin', u.twoFactor && '2fa', u.disabled && 'disabled', u.lockedUntil > Date.now() && 'locked'].filter(Boolean).join(', ');
         console.log(`${(u.username ?? '-').padEnd(20)} ${u.name.padEnd(24)} ${flags}`);
       }
       break;
@@ -66,8 +67,16 @@ try {
       console.log(`${user.username} is enabled and unlocked`);
       break;
     }
+    case 'disable-2fa': {
+      const user = localUser(args[0]);
+      store.setTotp(user.id, null);
+      store.deleteUserSessions(user.id);
+      store.audit(user.id, '2fa-reset-cli');
+      console.log(`Two-factor authentication removed for ${user.username}; they can set it up again after signing in`);
+      break;
+    }
     default:
-      console.log('Commands: list-users | reset-password <username> | create-user <username> [name] [--admin] | set-admin <username> on|off | enable <username>');
+      console.log('Commands: list-users | reset-password <username> | create-user <username> [name] [--admin] | set-admin <username> on|off | enable <username> | disable-2fa <username>');
       process.exitCode = command ? 1 : 0;
   }
 } catch (err) {

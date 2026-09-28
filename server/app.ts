@@ -13,6 +13,7 @@ import { oidcEnabled, type Config } from './config.ts';
 import type { Cipher } from './crypto.ts';
 import type { Store } from './db.ts';
 import { enforceLock, registerLockRoutes } from './lock.ts';
+import { twoFactorSetupRequired } from './twofactor.ts';
 import { registerPushRoutes, vapidKeys, webPushSender, type PushSender } from './push.ts';
 import { registerSharingRoutes } from './sharing.ts';
 
@@ -132,6 +133,9 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     if (user.mustChangePassword && request.url !== '/api/me') {
       return reply.code(403).send({ error: 'password-change-required' });
     }
+    if (twoFactorSetupRequired(config, user) && request.url !== '/api/me') {
+      return reply.code(403).send({ error: '2fa-setup-required' });
+    }
     // App lock (PIN / biometrics): locked sessions only reach the unlock endpoints.
     if (!enforceLock(store, request, reply)) return reply;
   });
@@ -147,7 +151,14 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
       name: u.name,
       settings: store.getSettings(uid(request)),
       authMode: config.AUTH_MODE,
-      account: { kind: u.kind, username: u.username, isAdmin: u.isAdmin, mustChangePassword: u.mustChangePassword },
+      account: {
+        kind: u.kind,
+        username: u.username,
+        isAdmin: u.isAdmin,
+        mustChangePassword: u.mustChangePassword,
+        twoFactor: u.twoFactor,
+        twoFactorSetupRequired: twoFactorSetupRequired(config, u),
+      },
       oidc: oidcEnabled(config),
     };
   });

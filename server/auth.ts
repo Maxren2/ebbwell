@@ -6,6 +6,8 @@ import { MIN_PASSWORD_LENGTH, oidcEnabled, type Config } from './config.ts';
 import { randomToken, sha256, type Cipher } from './crypto.ts';
 import type { AppLock, SessionRow, Store, User } from './db.ts';
 import { dummyHash, hashSecret, verifySecret } from './passwords.ts';
+import { checkSecondFactor, nextStep, twoFactorSetupRequired } from './twofactor.ts';
+import { generateRecoveryCodes, generateSecret, hashRecoveryCode, otpauthUri, qrSvg, verifyTotp } from './totp.ts';
 
 /** HTTPS: host-locked, Secure cookie. */
 export const SESSION_COOKIE = '__Host-ebbwell_session';
@@ -14,6 +16,14 @@ export const SESSION_COOKIE_LAN = 'ebbwell_session';
 const FLOW_COOKIE = '__Host-ebbwell_flow';
 const FORM_COOKIE = '__Host-ebbwell_form';
 const FORM_COOKIE_LAN = 'ebbwell_form';
+/** Password accepted, second factor pending (encrypted, 5 minutes). */
+const PENDING_COOKIE = '__Host-ebbwell_2fa';
+const PENDING_COOKIE_LAN = 'ebbwell_2fa';
+const PENDING_TTL_MS = 5 * 60_000;
+/** Secret being enrolled (encrypted, 10 minutes). */
+const SETUP_COOKIE = '__Host-ebbwell_2fa_setup';
+const SETUP_COOKIE_LAN = 'ebbwell_2fa_setup';
+const SETUP_TTL_MS = 10 * 60_000;
 const FLOW_TTL_MS = 10 * 60_000;
 const TOUCH_INTERVAL_MS = 5 * 60_000;
 const DAY_MS = 86_400_000;
@@ -124,6 +134,16 @@ function page(title: string, body: string) {
 <body><main><img src="/icon-192.png" alt="" class="logo"><h1>${esc(title)}</h1>${body}</main></body></html>`;
 }
 
+export function recoveryCodesPage(codes: string[], next: string) {
+  return page(
+    'Save your recovery codes',
+    `<p>Each code works once, if you lose access to your authenticator app. Store them somewhere safe (a password manager or on paper).</p>
+<ol class="codes">${codes.map((c) => `<li><code>${esc(c)}</code></li>`).join('')}</ol>
+<p class="hint">They won't be shown again. Other devices were signed out.</p>
+<a class="button" href="${esc(next)}">I saved them — continue</a>`,
+  );
+}
+
 const message = (title: string, text: string, action = '<a class="button" href="/auth/login">Try again</a>') =>
   page(title, `<p>${esc(text)}</p><p>${action}</p>`);
 
@@ -132,6 +152,11 @@ const LOGIN_ERRORS: Record<string, string> = {
   locked: 'Too many failed attempts. Try again in 15 minutes.',
   disabled: 'This account is disabled. Contact your administrator.',
   expired: 'The sign-in form expired. Please try again.',
+};
+
+const CODE_ERRORS: Record<string, string> = {
+  invalid: 'That code is not valid. Check the time on your phone, or use a recovery code.',
+  expired: 'The form expired. Please try again.',
 };
 
 export async function registerAuth(
@@ -237,11 +262,19 @@ export async function registerAuth(
       }
       if (creds.user.disabled) return reply.redirect('/auth/login?error=disabled', 303);
 
+      if (creds.user.twoFactor) {
+        const secure = request.access.secure;
+        reply.setCookie(secure ? PENDING_COOKIE : PENDING_COOKIE_LAN, cipher.encryptJson({ uid: creds.user.id, exp: Date.now() + PENDING_TTL_MS }, '2fa-pending'), {
+          ...(secure ? secureCookie : lanCookie),
+          maxAge: PENDING_TTL_MS / 1000,
+        });
+        return reply.redirect('/auth/2fa', 303);
+      }
       store.recordLogin(creds.user.id);
       // A password was just typed: the session starts unlocked and may reset a forgotten PIN.
       sessions.create(request, reply, creds.user, true);
       store.audit(creds.user.id, 'login-local');
-      return reply.redirect(creds.user.mustChangePassword ? '/auth/password' : '/', 303);
+      return reply.redirect(nextStep(config, creds.user), 303);
     });
 
     const passwordPage = (request: FastifyRequest, reply: FastifyReply, error?: string) => {
@@ -285,7 +318,150 @@ ${error ? `<p class="error" role="alert">${esc(error)}</p>` : ''}
       if (result !== 'ok') return passwordPage(request, reply, result);
       store.deleteUserSessions(user.id, request.sessionId);
       store.audit(user.id, 'password-changed');
-      return reply.redirect('/', 303);
+      return reply.redirect(nextStep(config, store.getUser(user.id)!), 303);
+    });
+
+    // ---------------------------------------------------------------- two-factor: sign-in prompt
+
+    const pendingUser = (request: FastifyRequest) => {
+      const raw = request.cookies[request.access.secure ? PENDING_COOKIE : PENDING_COOKIE_LAN];
+      try {
+        const p = raw ? cipher.decryptJson<{ uid: string; exp: number }>(raw, '2fa-pending') : null;
+        const user = p && p.exp > Date.now() ? store.getUser(p.uid) : null;
+        return user && user.kind === 'local' && user.twoFactor && !user.disabled ? user : null;
+      } catch {
+        return null;
+      }
+    };
+    const clearPending = (request: FastifyRequest, reply: FastifyReply) =>
+      reply.clearCookie(request.access.secure ? PENDING_COOKIE : PENDING_COOKIE_LAN, request.access.secure ? secureCookie : lanCookie);
+
+    const codePage = (request: FastifyRequest, reply: FastifyReply, error?: string) => {
+      const token = formToken(request, reply);
+      return reply.type('text/html').send(
+        page(
+          'Two-factor authentication',
+          `<p>Enter the 6-digit code from your authenticator app.</p>
+${error ? `<p class="error" role="alert">${esc(error)}</p>` : ''}
+<form method="post" action="/auth/2fa">
+  <input type="hidden" name="csrf" value="${token}">
+  <label>Code<input name="code" autocomplete="one-time-code" inputmode="numeric" autocapitalize="none" spellcheck="false" required maxlength="20" autofocus></label>
+  <button type="submit">Verify</button>
+</form>
+<p class="hint">Lost your phone? Enter one of your recovery codes instead.</p>
+<p><a href="/auth/login">Start over</a></p>`,
+        ),
+      );
+    };
+
+    app.get<{ Querystring: { error?: string } }>('/auth/2fa', authLimit, async (request, reply) => {
+      reply.header('Cache-Control', 'no-store');
+      if (!localAccountsAllowed(request.access) || !pendingUser(request)) return reply.redirect('/auth/login');
+      return codePage(request, reply, CODE_ERRORS[request.query.error ?? '']);
+    });
+
+    app.post('/auth/2fa', passwordLimit, async (request, reply) => {
+      if (!localAccountsAllowed(request.access)) return reply.redirect('/auth/login', 303);
+      const user = pendingUser(request);
+      if (!user) return reply.redirect('/auth/login?error=expired', 303);
+      const body = (request.body ?? {}) as Record<string, unknown>;
+      if (!formTokenValid(request, body.csrf)) return reply.redirect('/auth/2fa?error=expired', 303);
+      const creds = store.findLocalCredentials(user.username!);
+      if (!creds || creds.lockedUntil > Date.now()) {
+        clearPending(request, reply);
+        return reply.redirect('/auth/login?error=locked', 303);
+      }
+      const used = checkSecondFactor(store, user.id, typeof body.code === 'string' ? body.code : '');
+      if (!used) {
+        const locked = store.recordLoginFailure(user.id, MAX_LOGIN_FAILURES, LOGIN_LOCK_MS);
+        store.audit(user.id, locked ? 'login-locked' : '2fa-failed');
+        if (locked) {
+          clearPending(request, reply);
+          return reply.redirect('/auth/login?error=locked', 303);
+        }
+        return reply.redirect('/auth/2fa?error=invalid', 303);
+      }
+      clearPending(request, reply);
+      store.recordLogin(user.id);
+      sessions.create(request, reply, user, true);
+      store.audit(user.id, used === 'recovery' ? 'login-local-recovery-code' : 'login-local-2fa');
+      return reply.redirect(nextStep(config, user), 303);
+    });
+
+    // ---------------------------------------------------------------- two-factor: enrolment
+
+    const setupPage = async (request: FastifyRequest, reply: FastifyReply, secret: string, error?: string) => {
+      const user = request.user!;
+      const forced = twoFactorSetupRequired(config, user);
+      const token = formToken(request, reply);
+      const uri = otpauthUri(user.username ?? user.name, secret);
+      const grouped = secret.match(/.{1,4}/g)!.join(' ');
+      return reply.type('text/html').send(
+        page(
+          'Set up two-factor authentication',
+          `${forced ? '<p>Your administrator requires two-factor authentication for password sign-in.</p>' : ''}
+<p>Scan this code with an authenticator app (Aegis, 2FAS, Google or Microsoft Authenticator, 1Password…).</p>
+<div class="qr">${await qrSvg(uri)}</div>
+<p class="hint">Can't scan? Enter this key manually: <code>${esc(grouped)}</code></p>
+${error ? `<p class="error" role="alert">${esc(error)}</p>` : ''}
+<form method="post" action="/auth/2fa/setup">
+  <input type="hidden" name="csrf" value="${token}">
+  <input type="hidden" name="username" autocomplete="username" value="${esc(user.username ?? '')}">
+  ${forced ? '' : '<label>Current password<input name="password" type="password" autocomplete="current-password" required maxlength="128"></label>'}
+  <label>6-digit code from the app<input name="code" autocomplete="one-time-code" inputmode="numeric" required maxlength="8"></label>
+  <button type="submit">Turn on two-factor authentication</button>
+</form>
+${forced ? '' : '<p><a href="/settings">Cancel</a></p>'}`,
+        ),
+      );
+    };
+    const setupCookie = (request: FastifyRequest) => (request.access.secure ? SETUP_COOKIE : SETUP_COOKIE_LAN);
+    const readSetup = (request: FastifyRequest) => {
+      const raw = request.cookies[setupCookie(request)];
+      try {
+        const v = raw ? cipher.decryptJson<{ uid: string; secret: string; exp: number }>(raw, '2fa-setup') : null;
+        return v && v.exp > Date.now() && v.uid === request.user!.id ? v.secret : null;
+      } catch {
+        return null;
+      }
+    };
+
+    app.get('/auth/2fa/setup', authLimit, async (request, reply) => {
+      reply.header('Cache-Control', 'no-store');
+      if (!sessions.resolve(request, reply)) return reply.redirect('/auth/login');
+      const user = request.user!;
+      if (user.kind !== 'local' || !localAccountsAllowed(request.access)) return reply.redirect('/');
+      if (user.mustChangePassword) return reply.redirect('/auth/password');
+      if (user.twoFactor) return reply.redirect('/settings');
+      const secret = readSetup(request) ?? generateSecret();
+      reply.setCookie(setupCookie(request), cipher.encryptJson({ uid: user.id, secret, exp: Date.now() + SETUP_TTL_MS }, '2fa-setup'), {
+        ...(request.access.secure ? secureCookie : lanCookie),
+        maxAge: SETUP_TTL_MS / 1000,
+      });
+      return setupPage(request, reply, secret);
+    });
+
+    app.post('/auth/2fa/setup', passwordLimit, async (request, reply) => {
+      if (!sessions.resolve(request, reply)) return reply.redirect('/auth/login', 303);
+      const user = request.user!;
+      if (user.kind !== 'local' || !localAccountsAllowed(request.access) || user.twoFactor) return reply.redirect('/', 303);
+      const secret = readSetup(request);
+      if (!secret) return reply.redirect('/auth/2fa/setup', 303);
+      const body = (request.body ?? {}) as Record<string, unknown>;
+      if (!formTokenValid(request, body.csrf)) return setupPage(request, reply, secret, 'The form expired. Please try again.');
+      if (!twoFactorSetupRequired(config, user)) {
+        const hash = store.getPasswordHash(user.id);
+        if (!hash || !(await verifySecret(String(body.password ?? ''), hash))) return setupPage(request, reply, secret, 'Your current password is wrong.');
+      }
+      const step = verifyTotp(secret, String(body.code ?? ''), -1);
+      if (step === null) return setupPage(request, reply, secret, 'That code is not valid. Check the time on your phone and try again.');
+
+      const codes = generateRecoveryCodes();
+      store.setTotp(user.id, { secret, lastStep: step, recovery: codes.map(hashRecoveryCode), enabledAt: Date.now() });
+      reply.clearCookie(setupCookie(request), request.access.secure ? secureCookie : lanCookie);
+      store.deleteUserSessions(user.id, request.sessionId);
+      store.audit(user.id, '2fa-enabled');
+      return reply.type('text/html').send(recoveryCodesPage(codes, '/'));
     });
   }
 

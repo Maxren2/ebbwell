@@ -7,7 +7,14 @@ export interface Me {
   settings: Settings;
   authMode: 'standard' | 'dev';
   oidc: boolean;
-  account: { kind: 'oidc' | 'local' | 'dev'; username: string | null; isAdmin: boolean; mustChangePassword: boolean };
+  account: {
+    kind: 'oidc' | 'local' | 'dev';
+    username: string | null;
+    isAdmin: boolean;
+    mustChangePassword: boolean;
+    twoFactor: boolean;
+    twoFactorSetupRequired: boolean;
+  };
 }
 
 export interface AdminUser {
@@ -21,11 +28,18 @@ export interface AdminUser {
   createdAt: number;
   lastLoginAt: number | null;
   locked: boolean;
+  twoFactor: boolean;
   self: boolean;
 }
 
 export interface AccessReport {
-  policy: { localLogin: 'disabled' | 'local-network' | 'everywhere'; localNetworks: string[]; oidc: boolean; publicUrl: string };
+  policy: {
+    localLogin: 'disabled' | 'local-network' | 'everywhere';
+    localNetworks: string[];
+    twoFactor: 'optional' | 'required';
+    oidc: boolean;
+    publicUrl: string;
+  };
   thisConnection: { addresses: string[]; local: boolean; viaPublicUrl: boolean; secure: boolean; localLoginAllowed: boolean };
 }
 
@@ -95,6 +109,10 @@ async function request<T>(method: string, url: string, body?: unknown, opts: { k
       window.location.assign('/auth/password');
       throw new ApiError(403, 'password-change-required');
     }
+    if (err.error === '2fa-setup-required') {
+      window.location.assign('/auth/2fa/setup');
+      throw new ApiError(403, '2fa-setup-required');
+    }
   }
   if (res.status === 423) {
     window.dispatchEvent(new Event(LOCKED_EVENT));
@@ -146,6 +164,10 @@ export const api = {
   account: {
     changePassword: (current: string, password: string, confirm: string) =>
       request<void>('POST', '/api/account/password', { current, password, confirm }),
+    twoFactor: () =>
+      request<{ available: boolean; enabled: boolean; required: boolean; recoveryCodesLeft: number; enabledAt: number | null }>('GET', '/api/account/2fa'),
+    renewRecoveryCodes: (password: string, code: string) => request<{ codes: string[] }>('POST', '/api/account/2fa/recovery-codes', { password, code }),
+    disableTwoFactor: (password: string, code: string) => request<void>('POST', '/api/account/2fa/disable', { password, code }),
   },
 
   admin: {
@@ -154,6 +176,7 @@ export const api = {
     createUser: (username: string, name: string, isAdmin: boolean) =>
       request<{ id: string; temporaryPassword: string }>('POST', '/api/admin/users', { username, name, isAdmin }),
     resetPassword: (id: string) => request<{ temporaryPassword: string }>('POST', `/api/admin/users/${id}/reset-password`),
+    resetTwoFactor: (id: string) => request<void>('POST', `/api/admin/users/${id}/reset-2fa`),
     update: (id: string, patch: { disabled?: boolean; isAdmin?: boolean }) => request<void>('PATCH', `/api/admin/users/${id}`, patch),
     remove: (id: string) => request<void>('DELETE', `/api/admin/users/${id}`),
   },

@@ -61,6 +61,8 @@ const EnvSchema = z
      *  - everywhere:    from anywhere, including the public domain (not recommended)
      */
     LOCAL_LOGIN: z.enum(['disabled', 'local-network', 'everywhere']).default('disabled'),
+    /** Two-factor authentication (TOTP) for local accounts: optional, or required for everyone. */
+    LOCAL_2FA: z.enum(['optional', 'required']).default('optional'),
     /** Networks considered local (CIDR, comma-separated). */
     LOCAL_NETWORKS: z.string().default(DEFAULT_LOCAL_NETWORKS),
     /** Creates this local administrator at startup if no account with that username exists. */

@@ -80,7 +80,7 @@ The name and icon are deliberately neutral: "Ebbwell" (the ebb of the moon-drive
 
 ### E. Recommended next (Phase 3)
 
-- ~~**Local accounts**~~: built in 0.3.0. Passwords are accepted nowhere / on the local network only (never through the public domain) / everywhere, as set by the admin in the deployment configuration. Next: an optional TOTP second factor for local accounts.
+- ~~**Local accounts**~~: built in 0.3.0. Passwords are accepted nowhere / on the local network only (never through the public domain) / everywhere, as set by the admin in the deployment configuration. Two-factor authentication (TOTP + recovery codes, optional or required) added in 0.4.0.
 - **Import from other apps** (Clue, drip, Flo CSV exports).
 - Translations (French, German…).
 - **Offline logging queue**, stored encrypted on the device and synced later. This is a trade-off: it puts health data on the device.

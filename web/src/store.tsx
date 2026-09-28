@@ -72,8 +72,8 @@ export function StoreProvider(props: {
   const reload = useCallback(async () => {
     try {
       const m = await api.me();
-      if (m.account.mustChangePassword) {
-        window.location.assign('/auth/password');
+      if (m.account.mustChangePassword || m.account.twoFactorSetupRequired) {
+        window.location.assign(m.account.mustChangePassword ? '/auth/password' : '/auth/2fa/setup');
         return;
       }
       const d = await api.days();

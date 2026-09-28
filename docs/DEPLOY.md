@@ -63,6 +63,15 @@ How Ebbwell decides, on every request:
 - **Where the policy lives.** It is deployment configuration, not an in-app setting, so a stolen administrator session cannot open password sign-in to the internet.
 - **Password rules.** At least 10 characters, not containing the username. 10 wrong passwords lock the account for 15 minutes, and each device is rate-limited to 10 attempts per minute.
 
+**Two-factor authentication (local accounts).** Users turn it on in *Settings → Account* with any authenticator app (Aegis, 2FAS, Google/Microsoft Authenticator, 1Password…), and receive 10 single-use recovery codes.
+
+- `LOCAL_2FA=required` makes it mandatory: right after their password, users must set it up before they can do anything else. It pairs well with `LOCAL_LOGIN=everywhere`.
+- The secret and recovery codes are stored encrypted (AES-256-GCM, covered by key rotation).
+- A code can't be used twice, and wrong codes count toward the account lockout.
+- Turning 2FA off or creating new recovery codes needs the password *and* a current code.
+- If someone loses both their phone and their recovery codes, an administrator uses *Reset two-factor*; the user then signs in with the password and sets it up again.
+- Single sign-on users get their second factor from the identity provider (e.g. Authentik MFA).
+
 **Recovery from the server** (for example, a forgotten admin password):
 
 ```bash
@@ -70,6 +79,7 @@ docker exec -it <container> node server/cli.ts list-users
 docker exec -it <container> node server/cli.ts reset-password <username>   # prints a temporary password
 docker exec -it <container> node server/cli.ts set-admin <username> on
 docker exec -it <container> node server/cli.ts enable <username>           # re-enable + clear a lockout
+docker exec -it <container> node server/cli.ts disable-2fa <username>      # lost authenticator and recovery codes
 ```
 
 ## 3. TrueNAS

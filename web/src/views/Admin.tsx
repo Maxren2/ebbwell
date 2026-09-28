@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { ApiError, api, type AccessReport, type AdminUser } from '../api.ts';
 import { useStore } from '../store.tsx';
 import { useToast } from '../ui.tsx';
@@ -17,6 +17,9 @@ const ERRORS: Record<string, string> = {
   'use-account-settings': 'Use your own account settings for that.',
   'managed-by-identity-provider': 'Administrator rights of single sign-on users come from their identity-provider groups.',
   'username-taken': 'That username is already taken.',
+  'wrong-password': 'Your password is wrong.',
+  'wrong-code': 'That code is not valid.',
+  '2fa-required': 'Your administrator requires two-factor authentication.',
   invalid: 'Usernames use 3–32 lowercase letters, digits, dot, dash or underscore.',
 };
 
@@ -81,7 +84,113 @@ export function AccountSection() {
           </form>
         </details>
       )}
+      {a.kind === 'local' && <TwoFactorPanel />}
     </section>
+  );
+}
+
+function TwoFactorPanel() {
+  const toast = useToast();
+  const [info, setInfo] = useState<Awaited<ReturnType<typeof api.account.twoFactor>> | null>(null);
+  const [action, setAction] = useState<'renew' | 'disable' | null>(null);
+  const [password, setPassword] = useState('');
+  const [code, setCode] = useState('');
+  const [codes, setCodes] = useState<string[] | null>(null);
+
+  const load = () => api.account.twoFactor().then(setInfo).catch(() => {});
+  useEffect(() => void load(), []);
+  if (!info) return null;
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    try {
+      if (action === 'renew') setCodes((await api.account.renewRecoveryCodes(password, code)).codes);
+      else {
+        await api.account.disableTwoFactor(password, code);
+        toast('Two-factor authentication turned off');
+      }
+      setAction(null);
+      setPassword('');
+      setCode('');
+      await load();
+    } catch (err) {
+      toast(errorText(err));
+    }
+  };
+
+  return (
+    <div className="stack">
+      <div className="divider" />
+      <div className="spread">
+        <div>
+          <strong>Two-factor authentication</strong>
+          <div className="small muted">
+            {info.enabled ? `On · ${info.recoveryCodesLeft} recovery code${info.recoveryCodesLeft === 1 ? '' : 's'} left` : 'Off'}
+            {info.required && ' · required by your administrator'}
+          </div>
+        </div>
+        {info.enabled ? <span className="chip high">On</span> : <span className="chip low">Off</span>}
+      </div>
+      {!info.enabled && (
+        <a className="btn primary" href="/auth/2fa/setup">
+          Set up with an authenticator app
+        </a>
+      )}
+      {info.enabled && info.recoveryCodesLeft <= 3 && <p className="small" style={{ color: 'var(--warn)' }}>Few recovery codes left — create new ones.</p>}
+      {codes && (
+        <div className="card tone-warn stack small">
+          <strong>New recovery codes (the old ones no longer work)</strong>
+          <ol className="small">
+            {codes.map((c) => (
+              <li key={c}>
+                <code>{c}</code>
+              </li>
+            ))}
+          </ol>
+          <div className="grid-2">
+            <button className="btn" onClick={() => navigator.clipboard.writeText(codes.join('\n')).then(() => toast('Copied'))}>
+              Copy
+            </button>
+            <button className="btn" onClick={() => setCodes(null)}>
+              I saved them
+            </button>
+          </div>
+        </div>
+      )}
+      {info.enabled && !action && (
+        <div className="grid-2">
+          <button className="btn" onClick={() => setAction('renew')}>
+            New recovery codes
+          </button>
+          {!info.required && (
+            <button className="btn danger" onClick={() => setAction('disable')}>
+              Turn off
+            </button>
+          )}
+        </div>
+      )}
+      {action && (
+        <form className="stack" onSubmit={submit}>
+          <p className="small muted">Confirm with your password and a code from your authenticator app (or a recovery code).</p>
+          <label className="field">
+            <span>Password</span>
+            <input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} />
+          </label>
+          <label className="field">
+            <span>Code</span>
+            <input type="text" inputMode="numeric" autoComplete="one-time-code" value={code} onChange={(e) => setCode(e.target.value)} />
+          </label>
+          <div className="grid-2">
+            <button className={`btn ${action === 'disable' ? 'danger' : 'primary'}`} disabled={!password || code.length < 6}>
+              {action === 'renew' ? 'Create new codes' : 'Turn off 2FA'}
+            </button>
+            <button type="button" className="btn" onClick={() => setAction(null)}>
+              Cancel
+            </button>
+          </div>
+        </form>
+      )}
+    </div>
   );
 }
 
@@ -125,6 +234,7 @@ export function AdminSection() {
         <div className="card tone-ovulation small stack">
           <strong>Sign-in policy</strong>
           <span>{POLICY[access.policy.localLogin]}</span>
+          <span>Two-factor for local accounts: {access.policy.twoFactor}</span>
           <span>Single sign-on: {access.policy.oidc ? 'configured' : 'not configured'} · Public URL: {access.policy.publicUrl}</span>
           {access.policy.localLogin === 'local-network' && <span>Local networks: {access.policy.localNetworks.join(', ')}</span>}
           <span className="hint">Set by LOCAL_LOGIN / LOCAL_NETWORKS in the app configuration (TrueNAS app settings), not from here.</span>
@@ -162,6 +272,7 @@ export function AdminSection() {
               <span className="small muted">
                 · {u.kind === 'local' ? u.username : u.kind === 'oidc' ? 'single sign-on' : 'dev'}
                 {u.isAdmin && ' · admin'}
+                {u.twoFactor && ' · 2FA'}
                 {u.disabled && ' · disabled'}
                 {u.locked && ' · locked'}
                 {u.self && ' · you'}
@@ -185,6 +296,17 @@ export function AdminSection() {
                       }
                     >
                       Reset password
+                    </button>
+                  )}
+                  {u.twoFactor && (
+                    <button
+                      className="btn"
+                      onClick={() => {
+                        if (confirm(`Remove two-factor authentication for ${u.name}? They will sign in with their password only and can set it up again.`))
+                          void act(() => api.admin.resetTwoFactor(u.id), 'Two-factor reset and user signed out');
+                      }}
+                    >
+                      Reset two-factor
                     </button>
                   )}
                   <button className="btn" onClick={() => act(() => api.admin.update(u.id, { isAdmin: !u.isAdmin }))}>

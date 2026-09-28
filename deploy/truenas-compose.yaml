@@ -4,7 +4,7 @@ name: ebbwell
 
 services:
   ebbwell:
-    image: ghcr.io/maxren2/ebbwell:0.3.0
+    image: ghcr.io/maxren2/ebbwell:0.4.0
     restart: unless-stopped
     user: "568:568"            # TrueNAS "apps" user; must own the dataset below
     read_only: true
@@ -29,6 +29,8 @@ services:
       # Local accounts (username + password): disabled | local-network | everywhere (docs/DEPLOY.md section 2).
       # local-network = passwords only from your LAN by the NAS address, never through the public domain.
       LOCAL_LOGIN: "local-network"
+      # Two-factor (authenticator app) for local accounts: optional | required
+      LOCAL_2FA: "optional"
       # First local administrator, created at startup; remove ADMIN_PASSWORD once you've signed in.
       ADMIN_USERNAME: "admin"
       ADMIN_PASSWORD: "CHANGE_ME_at_least_10_chars"

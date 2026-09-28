@@ -9,7 +9,8 @@ import type { AccessPolicy } from './access.ts';
 import { changePassword, localAccountsAllowed } from './auth.ts';
 import { USERNAME_RE, oidcEnabled, type Config } from './config.ts';
 import type { Store } from './db.ts';
-import { hashSecret, temporaryPassword } from './passwords.ts';
+import { hashSecret, temporaryPassword, verifySecret } from './passwords.ts';
+import { checkSecondFactor, renewRecoveryCodes } from './twofactor.ts';
 
 export async function ensureBootstrapAdmin(store: Store, config: Config, log: (msg: string) => void) {
   if (!config.ADMIN_USERNAME || !config.ADMIN_PASSWORD) return;
@@ -47,6 +48,51 @@ export function registerAdminRoutes(app: FastifyInstance, deps: { config: Config
     return reply.code(204).send();
   });
 
+  // ---- two-factor authentication (self-service; enrolment is the /auth/2fa/setup page)
+
+  app.get('/api/account/2fa', async (request) => {
+    const u = request.user!;
+    const state = u.kind === 'local' ? store.getTotp(u.id) : null;
+    return {
+      available: u.kind === 'local',
+      enabled: !!state,
+      required: u.kind === 'local' && config.LOCAL_2FA === 'required',
+      recoveryCodesLeft: state?.recovery.length ?? 0,
+      enabledAt: state?.enabledAt ?? null,
+    };
+  });
+
+  /** Both the password and a current code (or recovery code) are needed to change 2FA. */
+  const confirmIdentity = async (userId: string, body: unknown): Promise<string | null> => {
+    const parsed = z.object({ password: z.string().max(128), code: z.string().max(32) }).safeParse(body);
+    if (!parsed.success) return 'invalid';
+    const hash = store.getPasswordHash(userId);
+    if (!hash || !(await verifySecret(parsed.data.password, hash))) return 'wrong-password';
+    if (!checkSecondFactor(store, userId, parsed.data.code)) return 'wrong-code';
+    return null;
+  };
+  const twoFactorLimit = { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } };
+
+  app.post('/api/account/2fa/recovery-codes', twoFactorLimit, async (request, reply) => {
+    const u = request.user!;
+    if (u.kind !== 'local' || !u.twoFactor) return reply.code(400).send({ error: 'not-enabled' });
+    const err = await confirmIdentity(u.id, request.body);
+    if (err) return reply.code(403).send({ error: err });
+    store.audit(u.id, '2fa-recovery-renewed');
+    return { codes: renewRecoveryCodes(store, u.id) };
+  });
+
+  app.post('/api/account/2fa/disable', twoFactorLimit, async (request, reply) => {
+    const u = request.user!;
+    if (u.kind !== 'local' || !u.twoFactor) return reply.code(400).send({ error: 'not-enabled' });
+    if (config.LOCAL_2FA === 'required') return reply.code(409).send({ error: '2fa-required' });
+    const err = await confirmIdentity(u.id, request.body);
+    if (err) return reply.code(403).send({ error: err });
+    store.setTotp(u.id, null);
+    store.audit(u.id, '2fa-disabled');
+    return reply.code(204).send();
+  });
+
   // ---- administration
 
   app.get('/api/admin/users', async (request, reply) => {
@@ -62,6 +108,7 @@ export function registerAdminRoutes(app: FastifyInstance, deps: { config: Config
       createdAt: u.createdAt,
       lastLoginAt: u.lastLoginAt || null,
       locked: u.lockedUntil > Date.now(),
+      twoFactor: u.twoFactor,
       self: u.id === request.user!.id,
     }));
   });
@@ -73,6 +120,7 @@ export function registerAdminRoutes(app: FastifyInstance, deps: { config: Config
       policy: {
         localLogin: policy.mode,
         localNetworks: policy.networkList,
+        twoFactor: config.LOCAL_2FA,
         oidc: oidcEnabled(config),
         publicUrl: config.APP_URL,
       },
@@ -128,6 +176,20 @@ export function registerAdminRoutes(app: FastifyInstance, deps: { config: Config
     store.audit(request.user!.id, 'admin-password-reset');
     store.audit(user.id, 'password-reset-by-admin');
     return { temporaryPassword: password };
+  });
+
+  /** Lost phone and recovery codes: an admin removes 2FA; the user signs in with the password and enrols again. */
+  app.post<{ Params: { id: string } }>('/api/admin/users/:id/reset-2fa', async (request, reply) => {
+    if (!requireAdmin(request, reply)) return;
+    const user = target(request, reply);
+    if (!user) return;
+    if (user.id === request.user!.id) return reply.code(400).send({ error: 'use-account-settings' });
+    if (!user.twoFactor) return reply.code(400).send({ error: 'not-enabled' });
+    store.setTotp(user.id, null);
+    store.deleteUserSessions(user.id);
+    store.audit(request.user!.id, 'admin-2fa-reset');
+    store.audit(user.id, '2fa-reset-by-admin');
+    return reply.code(204).send();
   });
 
   app.patch<{ Params: { id: string } }>('/api/admin/users/:id', async (request, reply) => {

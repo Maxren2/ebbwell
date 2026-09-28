@@ -35,3 +35,10 @@ button, .button {
 .or { display: flex; align-items: center; gap: .75rem; margin: 1.25rem 0 .5rem; color: var(--muted); font-size: .85rem; }
 .or::before, .or::after { content: ''; flex: 1; height: 1px; background: var(--border); }
 .error { padding: .6rem .8rem; border-radius: 12px; background: var(--danger-soft); color: var(--danger); text-align: left; }
+.qr { width: min(15rem, 80%); margin: 1rem auto; padding: .75rem; background: #fff; border-radius: 16px; }
+.qr svg { display: block; width: 100%; height: auto; }
+code { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; word-break: break-all; }
+.hint { font-size: .85rem; }
+ol.codes { columns: 2; text-align: left; padding-left: 1.6rem; margin: 1rem 0; line-height: 2; }
+ol.codes code { font-size: 1rem; color: var(--text); }
+main a:not(.button) { color: var(--accent); text-underline-offset: 3px; }
