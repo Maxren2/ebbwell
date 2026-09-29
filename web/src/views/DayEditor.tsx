@@ -6,8 +6,9 @@ import {
 } from '../../../shared/schema.ts';
 import { goBack, navigate } from '../router.ts';
 import { useStore } from '../store.tsx';
-import { fmtLong, fromDisplayTemp, toDisplayTemp } from '../format.ts';
-import { useT } from '../i18n.tsx';
+import { applyQuickEntry, isEmptyQuickEntry, onlyTracked, parseQuickEntry, type QuickEntry } from '../../../shared/quickentry.ts';
+import { fmtLong, fmtTemp, fromDisplayTemp, toDisplayTemp } from '../format.ts';
+import { useI18n, useT } from '../i18n.tsx';
 import { Chips, Icon, Seg, useToast } from '../ui.tsx';
 
 /** Drops undefined keys and empty arrays/objects so the stored record stays minimal. */
@@ -93,6 +94,14 @@ export function DayEditor({ date }: { date: string }) {
       </header>
 
       <div className="stack">
+        <QuickEntryCard
+          key={date}
+          onFill={(q) => {
+            setDraft((d) => applyQuickEntry(d, q));
+            if (q.temperature) setTempText(String(toDisplayTemp(q.temperature.value, unit)));
+          }}
+        />
+
         <section className="card">
           <div className="section-title">
             <span className="dot" style={{ background: 'var(--period)' }} /> {tx.bleeding}
@@ -316,5 +325,73 @@ export function DayEditor({ date }: { date: string }) {
         </div>
       </div>
     </div>
+  );
+}
+
+/** A sentence, typed or dictated with the keyboard's microphone, fills in the form below. */
+function QuickEntryCard({ onFill }: { onFill: (q: QuickEntry) => void }) {
+  const { settings } = useStore();
+  const { lang } = useI18n();
+  const t = useT();
+  const x = t.day.quick;
+  const L = t.labels;
+  const [text, setText] = useState('');
+  const [result, setResult] = useState<{ filled: string[]; unknown: string[] } | null>(null);
+
+  const fill = () => {
+    const q = onlyTracked(parseQuickEntry(text, lang), settings.track);
+    const temp = q.temperature;
+    const filled = [
+      temp && `${fmtTemp(temp.value, settings.temperatureUnit)}${temp.time ? ` (${temp.time})` : ''}`,
+      q.bleeding && x.pair(t.day.bleeding, L.bleeding[q.bleeding]),
+      q.sensation && L.sensation[q.sensation],
+      q.appearance && L.appearance[q.appearance],
+      q.lh && x.pair(t.day.lhShort, L.test[q.lh]),
+      q.pregnancyTest && x.pair(t.day.pregnancyTest, L.test[q.pregnancyTest]),
+      q.sex && x.pair(t.day.sex, L.sex[q.sex]),
+      ...q.symptoms.map((v) => L.symptoms[v]),
+      ...q.mood.map((v) => L.mood[v]),
+      ...q.disturbances.map((v) => L.disturbances[v]),
+    ].filter((v): v is string => !!v);
+    if (!isEmptyQuickEntry(q)) {
+      onFill(q);
+      setText('');
+    }
+    setResult({ filled, unknown: q.unknown });
+  };
+
+  return (
+    <section className="card stack">
+      <h3>{x.title}</h3>
+      <textarea
+        rows={2}
+        dir="auto"
+        maxLength={500}
+        placeholder={x.placeholder}
+        aria-label={x.title}
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+      />
+      <p className="hint">{x.hint}</p>
+      <button className="btn" disabled={!text.trim()} onClick={fill}>
+        {x.fill}
+      </button>
+      {result && (
+        <div className="small" role="status">
+          {result.filled.length ? (
+            <p>
+              <strong>{x.filled}</strong> {result.filled.join(' · ')}
+            </p>
+          ) : (
+            <p className="muted">{x.nothing}</p>
+          )}
+          {result.filled.length > 0 && result.unknown.length > 0 && (
+            <p className="muted">
+              {x.notUnderstood} {result.unknown.join(' ')}
+            </p>
+          )}
+        </div>
+      )}
+    </section>
   );
 }

@@ -254,6 +254,16 @@ export const fr: Messages = {
     clear: 'Effacer',
     saveDelete: 'Enregistrer (supprimer le jour)',
     saved: 'Enregistré',
+    quick: {
+      title: 'Saisie rapide',
+      placeholder: 'ex. 36,52 à 6h45, règles légères, crampes, fatiguée',
+      hint: "Tapez, ou dictez avec le micro de votre clavier. Ebbwell lit le texte sur cet appareil et remplit le formulaire ; rien n'est enregistré avant que vous touchiez Enregistrer.",
+      fill: 'Remplir',
+      filled: 'Rempli :',
+      pair: (label: string, value: string) => `${label} : ${value}`,
+      notUnderstood: 'Non compris :',
+      nothing: 'Rien de reconnu. Essayez par ex. « règles légères, mal de tête ».',
+    },
   },
 
   chart: {

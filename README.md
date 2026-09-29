@@ -28,6 +28,7 @@ Calendar-only period apps predict the ovulation day correctly only about 8–21%
 | | |
 |---|---|
 | Daily log | Bleeding, basal temperature (time, disturbances, exclusion), cervical mucus (Sensiplan categories), cervix, LH and pregnancy tests, sex, symptoms, mood, notes |
+| Quick entry | Type or dictate one sentence ("36.52 at 6:45, light bleeding, cramps, tired") and the day's form fills in. Understood in English, French, German and Arabic; the text is read in the browser and never sent anywhere |
 | Insights | Cycle and period length, variation, luteal phase, per-cycle ovulation method, exclude unusual cycles, pregnancy/pause mode |
 | Predictions | Next 3 periods, fertile window, ovulation with ranges and confidence; late-period detection with a pregnancy-test hint |
 | Sensiplan evaluation | Opt-in for people who learned the method: 5-day / minus-8 rules, post-ovulatory double check |
@@ -80,7 +81,7 @@ npm run typecheck
 The server is TypeScript run directly by Node 24 (type stripping), with no build step and no native modules. SQLite comes from `node:sqlite`.
 
 ```
-shared/   cycle engine and partner view (pure TS, shared by browser and server) + zod schemas
+shared/   cycle engine, partner view and quick-entry parser (pure TS, shared by browser and server) + zod schemas
           + translations (shared/i18n: en.ts is the reference, the compiler checks the others)
 server/   Fastify API: OIDC, sessions, app lock, Web Push, sharing, encrypted SQLite store, backups
 web/      React PWA + service worker

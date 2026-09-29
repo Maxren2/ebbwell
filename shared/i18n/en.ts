@@ -255,6 +255,16 @@ export const en = {
     clear: 'Clear',
     saveDelete: 'Save (delete day)',
     saved: 'Saved',
+    quick: {
+      title: 'Quick entry',
+      placeholder: 'e.g. 36.52 at 6:45, light bleeding, cramps, tired',
+      hint: "Type, or dictate with your keyboard's microphone. Ebbwell reads the text on this device and fills in the form; nothing is saved until you tap Save.",
+      fill: 'Fill in',
+      filled: 'Filled in:',
+      pair: (label: string, value: string) => `${label}: ${value}`,
+      notUnderstood: 'Not understood:',
+      nothing: 'Nothing recognised. Try e.g. "light bleeding, headache".',
+    },
   },
 
   chart: {

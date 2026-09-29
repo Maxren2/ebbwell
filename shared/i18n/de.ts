@@ -256,6 +256,16 @@ export const de: Messages = {
     clear: 'Leeren',
     saveDelete: 'Speichern (Tag löschen)',
     saved: 'Gespeichert',
+    quick: {
+      title: 'Schnelleingabe',
+      placeholder: 'z. B. 36,52 um 6:45, leichte Blutung, Krämpfe, müde',
+      hint: 'Tippe oder diktiere mit dem Mikrofon deiner Tastatur. Ebbwell liest den Text auf diesem Gerät und füllt das Formular aus; gespeichert wird erst, wenn du auf Speichern tippst.',
+      fill: 'Ausfüllen',
+      filled: 'Ausgefüllt:',
+      pair: (label: string, value: string) => `${label}: ${value}`,
+      notUnderstood: 'Nicht verstanden:',
+      nothing: 'Nichts erkannt. Versuch z. B. „leichte Blutung, Kopfschmerzen“.',
+    },
   },
 
   chart: {

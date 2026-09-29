@@ -251,6 +251,16 @@ export const ar: Messages = {
     clear: 'مسح',
     saveDelete: 'حفظ (حذف اليوم)',
     saved: 'تم الحفظ',
+    quick: {
+      title: 'إدخال سريع',
+      placeholder: 'مثال: 36.52 الساعة 6:45، نزيف خفيف، تقلصات، تعب',
+      hint: 'اكتب، أو أملِ النص بميكروفون لوحة المفاتيح. يقرأ Ebbwell النص على هذا الجهاز ويملأ النموذج، ولا يُحفظ شيء قبل الضغط على حفظ.',
+      fill: 'املأ',
+      filled: 'تمت تعبئة:',
+      pair: (label: string, value: string) => `${label}: ${value}`,
+      notUnderstood: 'لم يُفهم:',
+      nothing: 'لم يتم التعرف على شيء. جرّب مثلًا «نزيف خفيف، صداع».',
+    },
   },
 
   chart: {
