@@ -1,6 +1,6 @@
 {
   "name": "ebbwell",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Private, self-hosted period tracker and ovulation estimator (PWA) with symptothermal rules, encryption at rest and OIDC login.",
   "license": "AGPL-3.0-or-later",
   "repository": {

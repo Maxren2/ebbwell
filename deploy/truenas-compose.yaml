@@ -4,7 +4,7 @@ name: ebbwell
 
 services:
   ebbwell:
-    image: ghcr.io/maxren2/ebbwell:0.6.0
+    image: ghcr.io/maxren2/ebbwell:0.7.0
     restart: unless-stopped
     user: "568:568"            # TrueNAS "apps" user; must own the dataset below
     read_only: true
