@@ -16,6 +16,7 @@ import { enforceLock, registerLockRoutes } from './lock.ts';
 import { twoFactorSetupRequired } from './twofactor.ts';
 import { registerPushRoutes, vapidKeys, webPushSender, type PushSender } from './push.ts';
 import { registerSharingRoutes } from './sharing.ts';
+import { VOICE_MODELS_PREFIX, registerVoiceRoutes } from './voice.ts';
 
 export const EXPORT_VERSION = 1;
 
@@ -70,7 +71,8 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   // ---------------------------------------------------------------- security headers
   const csp = [
     "default-src 'self'",
-    "script-src 'self'",
+    // WebAssembly for on-device speech recognition (voice input); no eval of JavaScript.
+    "script-src 'self' 'wasm-unsafe-eval'",
     "style-src 'self'",
     "img-src 'self' data:",
     "font-src 'self'",
@@ -90,11 +92,13 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     reply.header('X-Frame-Options', 'DENY');
     reply.header('Cross-Origin-Opener-Policy', 'same-origin');
     reply.header('Cross-Origin-Resource-Policy', 'same-origin');
-    reply.header('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()');
+    // Cross-origin isolation: lets on-device speech recognition use several threads.
+    reply.header('Cross-Origin-Embedder-Policy', 'require-corp');
+    reply.header('Permissions-Policy', 'camera=(), microphone=(self), geolocation=(), payment=(), usb=(), interest-cohort=()');
     reply.header('X-Robots-Tag', 'noindex, nofollow');
     if (config.HSTS) reply.header('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
     const url = request.url;
-    if (url.startsWith('/api/') || url.startsWith('/auth/')) reply.header('Cache-Control', 'no-store');
+    if ((url.startsWith('/api/') && !url.startsWith(VOICE_MODELS_PREFIX)) || url.startsWith('/auth/')) reply.header('Cache-Control', 'no-store');
     return payload;
   });
 
@@ -142,6 +146,9 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
 
   app.get('/healthz', { config: { rateLimit: false } }, async () => 'ok');
 
+  // After the session hook above: model downloads need a signed-in, unlocked session.
+  const voice = await registerVoiceRoutes(app, config);
+
   // ---------------------------------------------------------------- API
   const uid = (request: { user?: { id: string } }) => request.user!.id;
 
@@ -161,6 +168,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
       },
       oidc: oidcEnabled(config),
       feedbackUrl: config.FEEDBACK_URL,
+      voice,
     };
   });
 

@@ -19,6 +19,27 @@ export function setDeviceBiometric(on: boolean) {
   }
 }
 
+const VOICE_KEY = 'ebbwell:voice-input';
+export type VoiceInput = 'keyboard' | 'whisper';
+
+/** How Quick entry takes speech on this device (a per-device choice: it depends on the phone). */
+export function voiceInputChoice(): VoiceInput {
+  try {
+    return localStorage.getItem(VOICE_KEY) === 'whisper' ? 'whisper' : 'keyboard';
+  } catch {
+    return 'keyboard';
+  }
+}
+
+export function setVoiceInputChoice(v: VoiceInput) {
+  try {
+    if (v === 'whisper') localStorage.setItem(VOICE_KEY, v);
+    else localStorage.removeItem(VOICE_KEY);
+  } catch {
+    /* storage unavailable: keyboard dictation */
+  }
+}
+
 /** Installed to the home screen (required for Web Push on iOS). */
 export function isStandalone(): boolean {
   return window.matchMedia('(display-mode: standalone)').matches || (navigator as { standalone?: boolean }).standalone === true;

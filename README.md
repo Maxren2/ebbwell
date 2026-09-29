@@ -28,7 +28,8 @@ Calendar-only period apps predict the ovulation day correctly only about 8–21%
 | | |
 |---|---|
 | Daily log | Bleeding, basal temperature (time, disturbances, exclusion), cervical mucus (Sensiplan categories), cervix, LH and pregnancy tests, sex, symptoms, mood, notes |
-| Quick entry | Type or dictate one sentence ("36.52 at 6:45, light bleeding, cramps, tired") and the day's form fills in. Understood in English, French, German and Arabic; the text is read in the browser and never sent anywhere |
+| Quick entry | Type or say one sentence ("36.52 at 6:45, light bleeding, cramps, tired") and the day's form fills in. Understood in English, French, German and Arabic; the text is read in the browser and never sent anywhere |
+| Voice input | Per device: the keyboard's dictation, or Whisper running on the phone itself (downloaded once from your server, about 79 MB). Audio never leaves the device |
 | Insights | Cycle and period length, variation, luteal phase, per-cycle ovulation method, exclude unusual cycles, pregnancy/pause mode |
 | Predictions | Next 3 periods, fertile window, ovulation with ranges and confidence; late-period detection with a pregnancy-test hint |
 | Sensiplan evaluation | Opt-in for people who learned the method: 5-day / minus-8 rules, post-ovulatory double check |
@@ -72,6 +73,7 @@ All settings are listed in [.env.example](.env.example).
 npm ci
 cp .env.example .env.dev    # set AUTH_MODE=dev, ALLOW_INSECURE_DEV_AUTH=true, APP_URL=http://localhost:8080, DATA_DIR=.data and a key
 npm run build               # builds the PWA into dist/
+node scripts/fetch-models.ts  # optional: the Whisper models for voice input (./models, ~120 MB)
 node --env-file=.env.dev scripts/seed-demo.ts   # optional: demo cycles + a shared partner cycle
 node --env-file=.env.dev server/index.ts        # http://localhost:8080/auth/login
 npm test                    # engine rules, API security, lock, push, sharing, OIDC flow against a mock provider

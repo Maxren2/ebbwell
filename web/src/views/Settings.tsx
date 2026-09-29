@@ -7,7 +7,7 @@ import { fmtDateTime } from '../format.ts';
 import { deviceLanguage, useT } from '../i18n.tsx';
 import { useStore } from '../store.tsx';
 import { Seg, Switch, useToast } from '../ui.tsx';
-import { LockSection, NotificationsSection, SharingSection } from './SettingsExtra.tsx';
+import { LockSection, NotificationsSection, SharingSection, VoiceSection } from './SettingsExtra.tsx';
 import { AccountSection, AdminSection } from './Admin.tsx';
 
 function deviceName(ua: string, unknown: string): string {
@@ -130,6 +130,7 @@ export function SettingsView() {
           </>
         )}
 
+        {settings.mode === 'own' && me.voice && <VoiceSection model={me.voice.model} sizeMb={me.voice.sizeMb} />}
         <NotificationsSection />
         <LockSection />
         <SharingSection />

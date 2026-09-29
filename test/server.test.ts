@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
@@ -9,6 +9,7 @@ import { buildApp } from '../server/app.ts';
 import { loadConfig } from '../server/config.ts';
 import { Cipher } from '../server/crypto.ts';
 import { Store } from '../server/db.ts';
+import { VOICE_MODELS } from '../server/voice-models.ts';
 
 const KEY = randomBytes(32).toString('base64');
 const APP_URL = 'https://ebbwell.test';
@@ -23,6 +24,7 @@ async function setup(env: Record<string, string>) {
     APP_URL,
     DATA_DIR: dir,
     STATIC_DIR: join(dir, 'none'),
+    MODELS_DIR: join(dir, 'no-models'),
     DATA_ENCRYPTION_KEY: KEY,
     LOG_LEVEL: 'fatal',
     ...env,
@@ -353,3 +355,65 @@ describe('OIDC login (mock Authentik)', () => {
     expect(res.statusCode).toBe(400);
   });
 });
+
+// ---------------------------------------------------------------- voice input
+
+describe('voice input (on-device Whisper)', () => {
+  const base = VOICE_MODELS.base;
+  let models: string;
+  const login = async () => {
+    const res = await app.inject({ method: 'GET', url: '/auth/login' });
+    return { cookie: `__Host-ebbwell_session=${cookieOf(res, '__Host-ebbwell_session')}` };
+  };
+  beforeEach(() => {
+    models = mkdtempSync(join(tmpdir(), 'ebbwell-models-'));
+    for (const file of Object.keys(base.files)) {
+      mkdirSync(join(models, base.id, file, '..'), { recursive: true });
+      writeFileSync(join(models, base.id, file), `fake ${file}`);
+    }
+  });
+  afterEach(async () => {
+    await teardown();
+    rmSync(models, { recursive: true, force: true });
+  });
+
+  it('offers the model to signed-in users only, cacheable for good', async () => {
+    await setup({ AUTH_MODE: 'dev', ALLOW_INSECURE_DEV_AUTH: 'true', MODELS_DIR: models });
+    const auth = await login();
+    expect((await app.inject({ method: 'GET', url: '/api/me', headers: auth })).json().voice).toEqual({ model: base.id, sizeMb: base.sizeMb });
+
+    const url = `/api/voice/models/${base.id}/onnx/encoder_model_quantized.onnx`;
+    expect((await app.inject({ method: 'GET', url })).statusCode).toBe(401);
+    const res = await app.inject({ method: 'GET', url, headers: auth });
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toBe('fake onnx/encoder_model_quantized.onnx');
+    expect(res.headers['cache-control']).toBe('private, max-age=31536000, immutable');
+    // Sizes for the progress bar come from 1-byte range requests.
+    const range = await app.inject({ method: 'GET', url, headers: { ...auth, range: 'bytes=0-0' } });
+    expect(range.statusCode).toBe(206);
+    expect(range.headers['content-range']).toMatch(/\/\d+$/);
+    // Nothing outside the model directory.
+    expect((await app.inject({ method: 'GET', url: `/api/voice/models/${base.id}/../../ebbwell.sqlite`, headers: auth })).statusCode).not.toBe(200);
+    expect((await app.inject({ method: 'GET', url: '/api/voice/models/whisper-tiny-ff417702/config.json', headers: auth })).statusCode).toBe(404);
+  });
+
+  it('is off when disabled or when the model files are missing', async () => {
+    await setup({ AUTH_MODE: 'dev', ALLOW_INSECURE_DEV_AUTH: 'true', MODELS_DIR: models, VOICE_MODEL: 'off' });
+    expect((await app.inject({ method: 'GET', url: '/api/me', headers: await login() })).json().voice).toBeNull();
+    await teardown();
+    await setup({ AUTH_MODE: 'dev', ALLOW_INSECURE_DEV_AUTH: 'true', MODELS_DIR: models, VOICE_MODEL: 'tiny' }); // only base is there
+    expect((await app.inject({ method: 'GET', url: '/api/me', headers: await login() })).json().voice).toBeNull();
+  });
+
+  it('allows the microphone, WebAssembly and threads, and nothing more', async () => {
+    await setup({ AUTH_MODE: 'dev', ALLOW_INSECURE_DEV_AUTH: 'true' });
+    const res = await app.inject({ method: 'GET', url: '/healthz' });
+    expect(res.headers['content-security-policy']).toContain("script-src 'self' 'wasm-unsafe-eval';");
+    expect(res.headers['content-security-policy']).not.toContain("'unsafe-eval'");
+    expect(res.headers['permissions-policy']).toContain('microphone=(self)');
+    expect(res.headers['permissions-policy']).toContain('camera=()');
+    expect(res.headers['cross-origin-embedder-policy']).toBe('require-corp');
+    expect(res.headers['cross-origin-opener-policy']).toBe('same-origin');
+  });
+});
+

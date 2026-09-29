@@ -3,12 +3,16 @@ import { startRegistration } from '@simplewebauthn/browser';
 import { SHARE_SCOPES, type ShareScope } from '../../../shared/partner.ts';
 import type { NotificationSettings } from '../../../shared/schema.ts';
 import { ApiError, LOCKED_EVENT, api, type LockStatus, type SharesInfo } from '../api.ts';
-import { hasDeviceBiometric, isIos, isStandalone, pushSupported, secureContext, setDeviceBiometric, urlBase64ToUint8Array } from '../device.ts';
+import {
+  hasDeviceBiometric, isIos, isStandalone, pushSupported, secureContext, setDeviceBiometric, setVoiceInputChoice, urlBase64ToUint8Array, voiceInputChoice,
+  type VoiceInput,
+} from '../device.ts';
 import { fmtDay } from '../format.ts';
 import { useT } from '../i18n.tsx';
 import { navigate } from '../router.ts';
 import { useStore } from '../store.tsx';
-import { Switch, useToast } from '../ui.tsx';
+import { Seg, Switch, useToast } from '../ui.tsx';
+import { prepareVoice, removeVoiceModel, voiceModelCached, voiceSupported } from '../voice.ts';
 
 // ------------------------------------------------------------------ notifications
 
@@ -524,6 +528,79 @@ export function SharingSection() {
           )}
         </>
       ) : null}
+    </section>
+  );
+}
+
+/** Keyboard dictation or Whisper on this device (a per-device choice). */
+export function VoiceSection({ model, sizeMb }: { model: string; sizeMb: number }) {
+  const t = useT();
+  const x = t.settings.voice;
+  const toast = useToast();
+  const [choice, setChoice] = useState<VoiceInput>(voiceInputChoice);
+  const [cached, setCached] = useState<boolean | null>(null);
+  const [progress, setProgress] = useState<number | null>(null);
+  const supported = voiceSupported();
+
+  useEffect(() => {
+    void voiceModelCached(model).then(setCached);
+  }, [model]);
+
+  const download = async () => {
+    setProgress(0);
+    try {
+      await prepareVoice(model, setProgress);
+      setCached(true);
+    } catch (e) {
+      toast(x.failed((e as Error).message));
+    } finally {
+      setProgress(null);
+    }
+  };
+
+  return (
+    <section className="card stack">
+      <h3>{x.title}</h3>
+      <Seg
+        label={x.title}
+        allowNone={false}
+        value={choice}
+        options={['keyboard', 'whisper'] as const}
+        labels={{ keyboard: x.keyboard, whisper: x.whisper }}
+        onChange={(v) => {
+          if (!v) return;
+          setChoice(v);
+          setVoiceInputChoice(v);
+        }}
+      />
+      <p className="small muted">{choice === 'whisper' ? x.whisperHint(sizeMb) : x.keyboardHint}</p>
+      {choice === 'whisper' &&
+        (!supported ? (
+          <p className="small">{x.unsupported}</p>
+        ) : progress !== null ? (
+          <p className="small" role="status">
+            {x.downloading(Math.round(progress * 100))}
+          </p>
+        ) : cached ? (
+          <div className="spread">
+            <span className="chip high">{x.ready}</span>
+            <button
+              className="btn"
+              onClick={async () => {
+                await removeVoiceModel();
+                setCached(false);
+                toast(x.removed);
+              }}
+            >
+              {x.remove}
+            </button>
+          </div>
+        ) : (
+          <button className="btn" onClick={download}>
+            {x.download(sizeMb)}
+          </button>
+        ))}
+      <p className="hint">{x.deviceOnly}</p>
     </section>
   );
 }

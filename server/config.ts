@@ -72,6 +72,10 @@ const EnvSchema = z
     DATA_ENCRYPTION_KEY: key32,
     DATA_ENCRYPTION_KEY_PREVIOUS: key32.optional(),
 
+    /** Whisper model browsers may download for on-device voice input (tiny ≈ 43 MB, base ≈ 79 MB), or off. */
+    VOICE_MODEL: z.enum(['off', 'tiny', 'base']).default('base'),
+    /** Where the voice models are (scripts/fetch-models.ts puts them there; the Docker image has both). */
+    MODELS_DIR: z.string().default('models'),
     /** Where "Report a bug" / "Suggest a feature" lead (https), or "off" to hide them. */
     FEEDBACK_URL: z
       .union([z.literal('off'), z.url({ protocol: /^https$/ })])

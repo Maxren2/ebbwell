@@ -10,6 +10,14 @@ COPY shared ./shared
 COPY web ./web
 RUN npm run build
 
+# ---- Whisper models for on-device voice input (pinned revisions, SHA-256 checked)
+FROM node:24-alpine AS models
+WORKDIR /app
+COPY package.json ./
+COPY server/voice-models.ts ./server/
+COPY scripts/fetch-models.ts ./scripts/
+RUN MODELS_DIR=/app/models node scripts/fetch-models.ts
+
 # ---- production dependencies only
 FROM node:24-alpine AS deps
 WORKDIR /app
@@ -21,8 +29,10 @@ FROM node:24-alpine
 ENV NODE_ENV=production \
     DATA_DIR=/data \
     STATIC_DIR=/app/dist \
+    MODELS_DIR=/app/models \
     PORT=8080
 WORKDIR /app
+COPY --from=models /app/models ./models
 COPY --from=deps /app/node_modules ./node_modules
 COPY package.json ./
 COPY shared ./shared

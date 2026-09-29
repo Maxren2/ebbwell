@@ -173,3 +173,19 @@ The CI publishes `ghcr.io/maxren2/ebbwell` for every version tag (`0.2.0`, …) 
 ## 12. Feedback links
 
 *Settings → Feedback* has "Report a bug" and "Suggest a feature" buttons. By default they open the project's GitHub issue forms, with only the app version and the device type (e.g. "iPhone · Safari · installed app") filled in. Nothing is sent until the user submits the form on GitHub. Set `FEEDBACK_URL` to another https address (your own forum or tracker) or to `off` to hide the section.
+
+## 13. Voice input
+
+*Settings → Voice input* is a choice per device:
+
+- **Keyboard dictation** (default): Quick entry is filled by the keyboard's own microphone. Where the speech is processed depends on the keyboard (on iPhone mostly on the device; with Gboard, turn on offline voice typing).
+- **Whisper on this device**: a *Speak* button in Quick entry. OpenAI's Whisper model runs in the browser (WebAssembly, in a background worker). The audio and the transcript never leave the phone; only the model is downloaded, once, from your Ebbwell server (not from the internet), and kept in the browser's cache. *Remove from this device* frees the space.
+
+`VOICE_MODEL` chooses what the server offers: `base` (default, ~79 MB, noticeably better, especially in Arabic), `tiny` (~43 MB, faster on old phones) or `off`. Both models are in the image (about +120 MB); only signed-in users can download them.
+
+Notes:
+
+- The microphone needs HTTPS (or `localhost`), like push notifications.
+- A sentence takes a few seconds to recognise on a recent phone; the first use also downloads the model (on Wi-Fi if possible: *Download now* in Settings).
+- For this the app sends `Cross-Origin-Embedder-Policy: require-corp` (several threads for the recogniser) and allows `'wasm-unsafe-eval'` (WebAssembly only, not JavaScript `eval`) and `microphone=(self)`. If your reverse proxy rewrites security headers, keep these.
+

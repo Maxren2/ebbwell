@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { addDays } from '../../../shared/dates.ts';
 import { MUCUS_LABELS, mucusCategory } from '../../../shared/engine.ts';
 import {
@@ -10,6 +10,10 @@ import { applyQuickEntry, isEmptyQuickEntry, onlyTracked, parseQuickEntry, type 
 import { fmtLong, fmtTemp, fromDisplayTemp, toDisplayTemp } from '../format.ts';
 import { useI18n, useT } from '../i18n.tsx';
 import { Chips, Icon, Seg, useToast } from '../ui.tsx';
+import { voiceInputChoice } from '../device.ts';
+import { MAX_RECORDING_SECONDS, prepareVoice, startRecording, transcribe, voiceSupported, type Recording } from '../voice.ts';
+
+const SAMPLE_RATE_16K = 16_000;
 
 /** Drops undefined keys and empty arrays/objects so the stored record stays minimal. */
 function clean(d: DayData): DayData {
@@ -328,18 +332,28 @@ export function DayEditor({ date }: { date: string }) {
   );
 }
 
-/** A sentence, typed or dictated with the keyboard's microphone, fills in the form below. */
+/**
+ * A sentence, typed, dictated with the keyboard's microphone, or spoken to Whisper on this
+ * device (Settings → Voice input), fills in the form below.
+ */
 function QuickEntryCard({ onFill }: { onFill: (q: QuickEntry) => void }) {
-  const { settings } = useStore();
+  const { settings, me } = useStore();
   const { lang } = useI18n();
   const t = useT();
   const x = t.day.quick;
   const L = t.labels;
   const [text, setText] = useState('');
-  const [result, setResult] = useState<{ filled: string[]; unknown: string[] } | null>(null);
+  const [result, setResult] = useState<{ heard?: string; filled: string[]; unknown: string[]; error?: string } | null>(null);
+  const voiceModel = me.voice && voiceInputChoice() === 'whisper' && voiceSupported() ? me.voice.model : null;
+  const [phase, setPhase] = useState<'idle' | 'recording' | 'working'>('idle');
+  const [seconds, setSeconds] = useState(0);
+  const [progress, setProgress] = useState<number | null>(null);
+  const recording = useRef<Recording | null>(null);
 
-  const fill = () => {
-    const q = onlyTracked(parseQuickEntry(text, lang), settings.track);
+  useEffect(() => () => recording.current?.cancel(), []);
+
+  const fill = (input: string, heard?: string) => {
+    const q = onlyTracked(parseQuickEntry(input, lang), settings.track);
     const temp = q.temperature;
     const filled = [
       temp && `${fmtTemp(temp.value, settings.temperatureUnit)}${temp.time ? ` (${temp.time})` : ''}`,
@@ -356,9 +370,54 @@ function QuickEntryCard({ onFill }: { onFill: (q: QuickEntry) => void }) {
     if (!isEmptyQuickEntry(q)) {
       onFill(q);
       setText('');
-    }
-    setResult({ filled, unknown: q.unknown });
+    } else if (heard) setText(heard); // let the user correct what was heard
+    setResult({ heard, filled, unknown: q.unknown });
   };
+
+  const stop = async () => {
+    const rec = recording.current;
+    if (!rec || !voiceModel) return;
+    recording.current = null;
+    setPhase('working');
+    try {
+      const audio = await rec.stop();
+      const heard = audio.length > SAMPLE_RATE_16K / 4 ? await transcribe(voiceModel, audio, lang, setProgress) : '';
+      if (heard) fill(heard, heard);
+      else setResult({ filled: [], unknown: [], error: x.nothingHeard });
+    } catch (e) {
+      setResult({ filled: [], unknown: [], error: x.voiceFailed((e as Error).message) });
+    } finally {
+      setPhase('idle');
+      setProgress(null);
+    }
+  };
+
+  const start = async () => {
+    if (!voiceModel) return;
+    setResult(null);
+    try {
+      recording.current = await startRecording();
+    } catch (e) {
+      const denied = (e as Error).name === 'NotAllowedError' || (e as Error).name === 'SecurityError';
+      setResult({ filled: [], unknown: [], error: denied ? x.micDenied : x.voiceFailed((e as Error).message) });
+      return;
+    }
+    setPhase('recording');
+    setSeconds(0);
+    // Download / warm up the model while the user speaks.
+    void prepareVoice(voiceModel, setProgress).catch(() => {});
+  };
+
+  useEffect(() => {
+    if (phase !== 'recording') return;
+    const started = Date.now();
+    const timer = setInterval(() => {
+      const s = Math.floor((Date.now() - started) / 1000);
+      setSeconds(s);
+      if (s >= MAX_RECORDING_SECONDS) void stop();
+    }, 250);
+    return () => clearInterval(timer);
+  }, [phase]);
 
   return (
     <section className="card stack">
@@ -372,19 +431,44 @@ function QuickEntryCard({ onFill }: { onFill: (q: QuickEntry) => void }) {
         value={text}
         onChange={(e) => setText(e.target.value)}
       />
-      <p className="hint">{x.hint}</p>
-      <button className="btn" disabled={!text.trim()} onClick={fill}>
-        {x.fill}
-      </button>
+      <p className="hint">{voiceModel ? x.hintVoice : x.hint}</p>
+      <div className={voiceModel ? 'grid-2' : 'stack'}>
+        {voiceModel && (
+          <button
+            className={`btn${phase === 'recording' ? ' primary' : ''}`}
+            disabled={phase === 'working'}
+            aria-pressed={phase === 'recording'}
+            onClick={phase === 'recording' ? stop : start}
+          >
+            <Icon name={phase === 'recording' ? 'stop' : 'mic'} />
+            {phase === 'recording' ? x.stop(seconds) : x.speak}
+          </button>
+        )}
+        <button className="btn" disabled={!text.trim() || phase !== 'idle'} onClick={() => fill(text)}>
+          {x.fill}
+        </button>
+      </div>
+      {phase === 'working' && (
+        <p className="small muted" role="status">
+          {progress !== null && progress < 1 ? x.preparing(Math.round(progress * 100)) : x.recognising}
+        </p>
+      )}
       {result && (
         <div className="small" role="status">
-          {result.filled.length ? (
-            <p>
-              <strong>{x.filled}</strong> {result.filled.join(' · ')}
+          {result.error && <p className="muted">{result.error}</p>}
+          {result.heard && (
+            <p className="muted">
+              {x.heard} <q dir="auto">{result.heard}</q>
             </p>
-          ) : (
-            <p className="muted">{x.nothing}</p>
           )}
+          {!result.error &&
+            (result.filled.length ? (
+              <p>
+                <strong>{x.filled}</strong> {result.filled.join(' · ')}
+              </p>
+            ) : (
+              <p className="muted">{x.nothing}</p>
+            ))}
           {result.filled.length > 0 && result.unknown.length > 0 && (
             <p className="muted">
               {x.notUnderstood} {result.unknown.join(' ')}

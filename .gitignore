@@ -8,3 +8,4 @@ dist/
 *.sqlite
 *.sqlite-*
 .claude/
+models/

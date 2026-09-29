@@ -10,6 +10,8 @@ export interface Me {
   oidc: boolean;
   /** Where feedback goes, or null when the administrator turned it off. */
   feedbackUrl: string | null;
+  /** On-device voice input: the Whisper model this server offers, or null. */
+  voice: { model: string; sizeMb: number } | null;
   account: {
     kind: 'oidc' | 'local' | 'dev';
     username: string | null;
