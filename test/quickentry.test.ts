@@ -52,6 +52,26 @@ describe('quick entry', () => {
     expect(parseQuickEntry('regles legeres, glaire filante', 'fr')).toMatchObject({ bleeding: 'light', appearance: 'eggwhite' });
   });
 
+  it('reads French as Whisper writes it', () => {
+    const cases: [string, Record<string, unknown>][] = [
+      [
+        "36,52. Saignement léger, pas de crampe, mal à la tête et je suis fatiguée.",
+        { temperature: { value: 36.52 }, bleeding: 'light', symptoms: ['headache', 'fatigue'], unknown: [] },
+      ],
+      [
+        "Aujourd'hui j'ai mes règles, j'ai mal au ventre et mal aux seins, je suis un peu triste.",
+        { bleeding: 'medium', symptoms: ['cramps', 'breast_tenderness'], mood: ['sad'], unknown: [] },
+      ],
+      [
+        'Température 36,7. Glaire filante, sensation mouillée. Test d’ovulation positif.',
+        { temperature: { value: 36.7 }, appearance: 'eggwhite', sensation: 'wet', lh: 'positive', unknown: [] },
+      ],
+      ['Petites règles, un peu de crampes, rapport sexuel non protégé.', { bleeding: 'light', symptoms: ['cramps'], sex: 'unprotected', unknown: [] }],
+      ["Règles très abondantes. J'ai mal dormi.", { bleeding: 'heavy', disturbances: ['sleep'], unknown: [] }],
+    ];
+    for (const [text, expected] of cases) expect(parseQuickEntry(text, 'fr'), text).toMatchObject(expected);
+  });
+
   it('reads German', () => {
     const q = parseQuickEntry('36,6 um 7:15, Schmierblutung, keine Kopfschmerzen, Rückenschmerzen, gereizt, LH-Test positiv', 'de');
     expect(q).toMatchObject({

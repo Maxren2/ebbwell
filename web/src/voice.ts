@@ -2,12 +2,12 @@
 // and transcribes in a worker. Nothing is uploaded; the model comes from the Ebbwell server
 // once and stays in the browser's cache.
 
-import type { Lang } from '../../shared/i18n/index.ts';
+import { LANGUAGES, isLang, type Lang } from '../../shared/i18n/index.ts';
 import type { VoiceReply, VoiceRequest } from './voice.worker.ts';
 
 export const MAX_RECORDING_SECONDS = 30;
 const SAMPLE_RATE = 16_000; // what Whisper expects
-const WHISPER_LANGUAGE: Record<Lang, string> = { en: 'english', fr: 'french', de: 'german', ar: 'arabic' };
+// Ebbwell's language codes (en, fr, de, ar) are also Whisper's.
 /** Where the transformers library caches downloaded model files (its default cache name). */
 const MODEL_CACHE = 'transformers-cache';
 
@@ -56,9 +56,20 @@ export async function prepareVoice(model: string, onProgress?: (fraction: number
   await ask({ type: 'load', model }, onProgress);
 }
 
-export async function transcribe(model: string, audio: Float32Array, lang: Lang, onProgress?: (fraction: number) => void): Promise<string> {
-  const reply = await ask({ type: 'transcribe', model, audio, language: WHISPER_LANGUAGE[lang] }, onProgress);
-  return reply.type === 'text' ? reply.text : '';
+/**
+ * The speech may be in any of Ebbwell's languages, whatever the interface language (people
+ * switch languages): the worker detects which one, the interface language winning near ties.
+ */
+export async function transcribe(
+  model: string,
+  audio: Float32Array,
+  preferred: Lang,
+  onProgress?: (fraction: number) => void,
+): Promise<{ text: string; lang: Lang }> {
+  const languages = [preferred, ...LANGUAGES.filter((l) => l !== preferred)];
+  const reply = await ask({ type: 'transcribe', model, audio, languages }, onProgress);
+  if (reply.type !== 'text') return { text: '', lang: preferred };
+  return { text: reply.text, lang: isLang(reply.language) ? reply.language : preferred };
 }
 
 // ------------------------------------------------------------------ model cache

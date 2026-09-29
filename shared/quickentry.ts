@@ -116,9 +116,9 @@ const LEXICONS: Record<Lang, Lexicon> = {
   fr: {
     bleeding: {
       spotting: ['spotting', 'saignotement', 'saignotements', 'traces de sang', 'pertes brunes', 'petites pertes'],
-      light: ['regles legeres', 'saignement leger', 'saignements legers', 'flux leger', 'regles faibles', 'peu de sang'],
-      medium: ['regles moyennes', 'flux moyen', 'saignement moyen', 'regles normales', 'flux normal', 'j ai mes regles', 'regles', 'saignement', 'saignements', 'menstruation'],
-      heavy: ['regles abondantes', 'flux abondant', 'saignement abondant', 'saignements abondants', 'regles fortes', 'beaucoup de sang', 'hemorragie'],
+      light: ['regles legeres', 'saignement leger', 'leger saignement', 'flux leger', 'regles faibles', 'saignement faible', 'petites regles', 'regles peu abondantes', 'peu de sang', 'un peu de sang'],
+      medium: ['regles moyennes', 'flux moyen', 'saignement moyen', 'regles normales', 'flux normal', 'j ai mes regles', 'debut des regles', 'premier jour des regles', 'regles', 'saignement', 'menstruation'],
+      heavy: ['regles abondantes', 'regles tres abondantes', 'flux abondant', 'saignement abondant', 'saignement important', 'regles fortes', 'fortes regles', 'grosses regles', 'beaucoup de sang', 'hemorragie'],
     },
     sensation: { dry: ['sec', 'seche', 'sensation seche', 'secheresse'], moist: ['humide', 'moite'], wet: ['mouille', 'mouillee', 'glissant', 'glissante', 'lubrifie', 'lubrifiee'] },
     appearance: {
@@ -126,15 +126,18 @@ const LEXICONS: Record<Lang, Lexicon> = {
       eggwhite: ['blanc d oeuf', 'blanc d œuf', 'filante', 'filantes', 'etirable', 'elastique', 'transparente', 'claire'],
     },
     symptoms: {
-      cramps: ['crampes', 'douleurs de regles', 'mal au ventre', 'maux de ventre', 'douleurs abdominales', 'douleur abdominale'],
+      cramps: [
+        'crampes', 'crampes abdominales', 'crampes menstruelles', 'douleurs de regles', 'regles douloureuses', 'mal au ventre', 'mal de ventre',
+        'maux de ventre', 'douleur au ventre', 'douleurs au ventre', 'douleur abdominale', 'mal au bas ventre', 'douleur au bas ventre',
+      ],
       headache: ['mal de tete', 'mal a la tete', 'maux de tete', 'cephalee'],
       migraine: ['migraine'],
       backache: ['mal de dos', 'mal au dos', 'maux de dos', 'douleur dorsale', 'lombalgie'],
-      breast_tenderness: ['seins sensibles', 'seins douloureux', 'douleur aux seins', 'poitrine sensible', 'poitrine douloureuse'],
+      breast_tenderness: ['seins sensibles', 'seins douloureux', 'seins tendus', 'mal aux seins', 'douleur aux seins', 'poitrine sensible', 'poitrine douloureuse', 'poitrine tendue'],
       bloating: ['ballonnements', 'ballonnee', 'ballonne', 'ventre gonfle', 'gonflee'],
       acne: ['acne', 'boutons', 'bouton'],
       nausea: ['nausee', 'nausees', 'envie de vomir', 'mal au coeur', 'mal au cœur'],
-      fatigue: ['fatigue', 'fatiguee', 'epuisee', 'epuise', 'crevee'],
+      fatigue: ['fatigue', 'fatiguee', 'epuisee', 'epuise', 'epuisement', 'crevee', 'claquee'],
       cravings: ['fringales', 'fringale', 'envies de sucre', 'envie de sucre', 'grignotage'],
       insomnia: ['insomnie', 'pas dormi', 'nuit blanche'],
       diarrhea: ['diarrhee'],
@@ -164,8 +167,13 @@ const LEXICONS: Record<Lang, Lexicon> = {
       medication: ['medicament', 'medicaments', 'antidouleur', 'ibuprofene'],
     },
     sex: {
-      protected: ['rapport protege', 'rapports proteges', 'sexe protege', 'avec preservatif', 'preservatif'],
-      unprotected: ['rapport non protege', 'rapports non proteges', 'sexe non protege', 'sans preservatif', 'non protege'],
+      protected: [
+        'rapport protege', 'rapport sexuel protege', 'relation protegee', 'relation sexuelle protegee', 'sexe protege', 'avec preservatif', 'preservatif',
+      ],
+      unprotected: [
+        'rapport non protege', 'rapport sexuel non protege', 'relation non protegee', 'relation sexuelle non protegee', 'sexe non protege',
+        'sans preservatif', 'non protege',
+      ],
     },
     tests: { lh: ['test lh', 'test d ovulation', 'test ovulation', 'lh'], pregnancyTest: ['test de grossesse', 'test grossesse'] },
     results: { positive: ['positif', 'positive'], negative: ['negatif', 'negative'] },
@@ -175,7 +183,7 @@ const LEXICONS: Record<Lang, Lexicon> = {
       'et', 'un', 'une', 'le', 'la', 'les', 'l', 'de', 'des', 'du', 'd', 'a', 'au', 'aux', 'avec', 'je', 'j', 'ai', 'suis', 'me', 'm',
       'sens', 'peu', 'tres', 'assez', 'aujourd', 'hui', 'ce', 'matin', 'soir', 'ma', 'mon', 'mes', 'temperature', 'degres', 'degre',
       'glaire', 'pertes', 'cervicale', 'mesuree', 'mesure', 'h', 'heures', 'heure', 'vers', 'mais', 'aussi', 'il', 'y', 'est', 'un peu',
-      'test', 'resultat', 'c', 'basale',
+      'test', 'resultat', 'c', 'basale', 'etait', 'eu', 'fait', 'plutot', 'encore', 'bien', 'nuit', 'sensation', 'aspect',
     ],
   },
 
@@ -338,11 +346,12 @@ function normalizeToken(token: string): string {
 
 const tokensOf = (text: string) => [...text.matchAll(/[\p{L}\p{N}]+/gu)].map((m) => m[0]);
 
-/** Plurals and inflections: "cramp(s)", "crampe(s)", "müde/müder". Latin scripts only. */
+/** Plurals and inflections either way: "cramp(s)", "crampe(s)", "léger/légère(s)", "müde/müder". Latin scripts only. */
 function sameWord(text: string, lexeme: string): boolean {
   if (text === lexeme) return true;
-  if (lexeme.length < 4 || !text.startsWith(lexeme) || /[؀-ۿ]/.test(lexeme)) return false;
-  return /^(?:s|es|e|en|n|x|er|r)$/.test(text.slice(lexeme.length));
+  if (/[؀-ۿ]/.test(lexeme)) return false;
+  const [short, long] = text.length < lexeme.length ? [text, lexeme] : [lexeme, text];
+  return short.length >= 4 && long.startsWith(short) && /^(?:s|es|e|en|n|x|er|r)$/.test(long.slice(short.length));
 }
 
 // ------------------------------------------------------------------ parsing

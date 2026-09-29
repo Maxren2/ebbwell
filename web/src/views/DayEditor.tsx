@@ -6,6 +6,7 @@ import {
 } from '../../../shared/schema.ts';
 import { goBack, navigate } from '../router.ts';
 import { useStore } from '../store.tsx';
+import type { Lang } from '../../../shared/i18n/index.ts';
 import { applyQuickEntry, isEmptyQuickEntry, onlyTracked, parseQuickEntry, type QuickEntry } from '../../../shared/quickentry.ts';
 import { fmtLong, fmtTemp, fromDisplayTemp, toDisplayTemp } from '../format.ts';
 import { useI18n, useT } from '../i18n.tsx';
@@ -352,8 +353,8 @@ function QuickEntryCard({ onFill }: { onFill: (q: QuickEntry) => void }) {
 
   useEffect(() => () => recording.current?.cancel(), []);
 
-  const fill = (input: string, heard?: string) => {
-    const q = onlyTracked(parseQuickEntry(input, lang), settings.track);
+  const fill = (input: string, heard?: string, spoken: Lang = lang) => {
+    const q = onlyTracked(parseQuickEntry(input, spoken), settings.track);
     const temp = q.temperature;
     const filled = [
       temp && `${fmtTemp(temp.value, settings.temperatureUnit)}${temp.time ? ` (${temp.time})` : ''}`,
@@ -381,8 +382,8 @@ function QuickEntryCard({ onFill }: { onFill: (q: QuickEntry) => void }) {
     setPhase('working');
     try {
       const audio = await rec.stop();
-      const heard = audio.length > SAMPLE_RATE_16K / 4 ? await transcribe(voiceModel, audio, lang, setProgress) : '';
-      if (heard) fill(heard, heard);
+      const heard = audio.length > SAMPLE_RATE_16K / 4 ? await transcribe(voiceModel, audio, lang, setProgress) : null;
+      if (heard?.text) fill(heard.text, heard.text, heard.lang);
       else setResult({ filled: [], unknown: [], error: x.nothingHeard });
     } catch (e) {
       setResult({ filled: [], unknown: [], error: x.voiceFailed((e as Error).message) });
