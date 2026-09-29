@@ -2,6 +2,39 @@ import { useSyncExternalStore } from 'react';
 
 // Minimal History-API router: the app has a handful of flat routes.
 
+// An invite link opened while signed out goes through the sign-in pages (and possibly the
+// identity provider) and comes back to "/". The code is kept in this tab's sessionStorage
+// meanwhile, so the invite reopens instead of being lost.
+const INVITE_KEY = 'ebbwell:invite';
+const INVITE_TTL_MS = 30 * 60_000;
+
+/** Call once at startup, before the first render. */
+export function keepPendingInvite() {
+  try {
+    if (location.pathname === '/invite' && location.hash.length > 1) {
+      sessionStorage.setItem(INVITE_KEY, JSON.stringify({ code: location.hash.slice(1), at: Date.now() }));
+      return;
+    }
+    const raw = sessionStorage.getItem(INVITE_KEY);
+    if (!raw) return;
+    sessionStorage.removeItem(INVITE_KEY);
+    const { code, at } = JSON.parse(raw) as { code?: unknown; at?: unknown };
+    const fresh = typeof at === 'number' && Date.now() - at < INVITE_TTL_MS;
+    if (fresh && typeof code === 'string' && location.pathname === '/') history.replaceState(null, '', `/invite#${code}`);
+  } catch {
+    /* storage unavailable: the partner opens the link again after signing in */
+  }
+}
+
+/** The invite page has read the code: nothing left to resume. */
+export function clearPendingInvite() {
+  try {
+    sessionStorage.removeItem(INVITE_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
 /** The element that scrolls the pages (the document itself doesn't scroll). */
 export const SCROLLER_ID = 'scroller';
 

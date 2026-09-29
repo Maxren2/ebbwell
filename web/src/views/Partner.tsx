@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { PartnerView, ShareScope } from '../../../shared/partner.ts';
 import { ApiError, api, type ShareSummary } from '../api.ts';
-import { goBack, navigate } from '../router.ts';
+import { clearPendingInvite, goBack, navigate } from '../router.ts';
 import { useStore } from '../store.tsx';
 import { fmtDate, fmtRange, relDays } from '../format.ts';
 import { useT } from '../i18n.tsx';
@@ -220,6 +220,7 @@ export function InviteAccept() {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
+    clearPendingInvite();
     history.replaceState(null, '', '/invite');
     if (!code) return setError(x.incomplete);
     api.shares
