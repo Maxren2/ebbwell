@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { isIsoDate } from '../../shared/dates.ts';
 import { I18nProvider, useT } from './i18n.tsx';
-import { navigate, usePath } from './router.ts';
+import { SCROLLER_ID, navigate, usePath } from './router.ts';
 import { StoreProvider } from './store.tsx';
 import { Icon, ToastProvider, type IconName } from './ui.tsx';
 import { Today } from './views/Today.tsx';
@@ -100,18 +100,22 @@ function Shell() {
   return (
     <ToastProvider>
       <StoreProvider fallback={(error) => <Splash error={error} />} lockScreen={(onUnlocked) => <LockScreen onUnlocked={onUnlocked} />}>
-        <div className="app">
-          {!online && <div className="banner">{t.app.offline}</div>}
-          <Routes />
+        <div className="shell">
+          <main id={SCROLLER_ID} className="scroller">
+            <div className="app">
+              {!online && <div className="banner">{t.app.offline}</div>}
+              <Routes />
+            </div>
+          </main>
+          <nav className="tabbar" aria-label={t.nav.main}>
+            {TABS.map((tab) => (
+              <button key={tab.path} aria-current={active === tab.path ? 'page' : undefined} onClick={() => navigate(tab.path)}>
+                <Icon name={tab.icon} />
+                {t.nav[tab.label]}
+              </button>
+            ))}
+          </nav>
         </div>
-        <nav className="tabbar" aria-label={t.nav.main}>
-          {TABS.map((tab) => (
-            <button key={tab.path} aria-current={active === tab.path ? 'page' : undefined} onClick={() => navigate(tab.path)}>
-              <Icon name={tab.icon} />
-              {t.nav[tab.label]}
-            </button>
-          ))}
-        </nav>
       </StoreProvider>
     </ToastProvider>
   );
