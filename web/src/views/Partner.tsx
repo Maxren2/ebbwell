@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { PartnerView, ShareScope } from '../../../shared/partner.ts';
 import { ApiError, api, type ShareSummary } from '../api.ts';
 import { clearPendingInvite, goBack, navigate } from '../router.ts';
@@ -70,7 +70,11 @@ function PartnerSummary({ view, today }: { view: PartnerView; today: string }) {
   );
 }
 
-export function PartnerPage({ id }: { id: string }) {
+/**
+ * One shared cycle. As the home screen of a partner-only account (`home`) it has no back
+ * button, and ending the share hands back to the caller instead of navigating.
+ */
+export function PartnerPage({ id, home = false, onEnded }: { id: string; home?: boolean; onEnded?: () => void }) {
   const { today } = useStore();
   const t = useT();
   const x = t.partner;
@@ -92,11 +96,13 @@ export function PartnerPage({ id }: { id: string }) {
   return (
     <>
       <header className="page-header">
-        <button className="icon-btn" aria-label={t.common.back} onClick={() => goBack('/')}>
-          <Icon name="left" />
-        </button>
-        <h1 style={{ fontSize: '1.3rem' }}>{view ? t.sharing.cycleOf(view.owner.name) : x.sharedCycle}</h1>
-        <span style={{ width: 40 }} />
+        {!home && (
+          <button className="icon-btn" aria-label={t.common.back} onClick={() => goBack('/')}>
+            <Icon name="left" />
+          </button>
+        )}
+        <h1 style={home ? undefined : { fontSize: '1.3rem' }}>{view ? t.sharing.cycleOf(view.owner.name) : x.sharedCycle}</h1>
+        {!home && <span style={{ width: 40 }} />}
       </header>
       {error && (
         <div className="card">
@@ -146,13 +152,56 @@ export function PartnerPage({ id }: { id: string }) {
               if (!confirm(x.stopConfirm(view.owner.name))) return;
               await api.shares.end(id);
               toast(x.stopped);
-              navigate('/', { replace: true });
+              if (onEnded) onEnded();
+              else navigate('/', { replace: true });
             }}
           >
             {x.stop}
           </button>
         </div>
       )}
+    </>
+  );
+}
+
+/** Home screen of a partner-only account: the shared cycle, or a list when there are several. */
+export function PartnerHome() {
+  const { saveSettings } = useStore();
+  const t = useT();
+  const x = t.partnerHome;
+  const toast = useToast();
+  const [shares, setShares] = useState<ShareSummary[] | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  const load = useCallback(() => {
+    api.shares
+      .list()
+      .then((r) => setShares(r.asPartner))
+      .catch(() => setFailed(true));
+  }, []);
+  useEffect(load, [load]);
+
+  if (failed) return <div className="card">{t.partner.loadFailed}</div>;
+  if (!shares) return null;
+  if (shares.length === 1) return <PartnerPage key={shares[0]!.id} id={shares[0]!.id} home onEnded={load} />;
+  return (
+    <>
+      <header className="page-header">
+        <h1>{x.title}</h1>
+      </header>
+      <div className="stack">
+        {shares.length ? (
+          <PartnerCards />
+        ) : (
+          <div className="card stack">
+            <h2>{x.none}</h2>
+            <p className="small muted">{x.noneHint}</p>
+            <button className="btn" onClick={() => saveSettings({ mode: 'own' }).catch((e: Error) => toast(t.common.couldNotSave(e.message)))}>
+              {x.trackOwn}
+            </button>
+          </div>
+        )}
+      </div>
     </>
   );
 }
@@ -210,9 +259,12 @@ export function PartnerCards() {
 }
 
 export function InviteAccept() {
+  const { settings, days, saveSettings } = useStore();
   const t = useT();
   const x = t.invite;
   const toast = useToast();
+  // Set once accepted by someone who doesn't track anything yet: ask how they'll use the app.
+  const [choosing, setChoosing] = useState<{ id: string; name: string } | null>(null);
   // The code lives in the URL fragment (never sent to the server in requests or logs).
   const [code] = useState(() => location.hash.slice(1));
   const [preview, setPreview] = useState<{ name: string; scopes: string[]; own: boolean } | null>(null);
@@ -234,44 +286,71 @@ export function InviteAccept() {
       <header className="page-header">
         <h1>{x.title}</h1>
       </header>
-      <div className="card stack">
-        {error && <p>{error}</p>}
-        {preview?.own && <p>{x.own}</p>}
-        {preview && !preview.own && (
-          <>
-            <h2>{x.wants(preview.name)}</h2>
-            <p className="small muted">{x.youllSee}</p>
-            <ul className="small">
-              <li>{x.always}</li>
-              {preview.scopes.map((s) => (
-                <li key={s}>{t.scopes[s as ShareScope]?.body}</li>
-              ))}
-            </ul>
-            <p className="hint">{x.never(preview.name)}</p>
-            <button
-              className="btn primary"
-              disabled={busy}
-              onClick={async () => {
-                setBusy(true);
-                try {
-                  const { id } = await api.shares.accept(code);
-                  toast(x.accepted);
-                  navigate(`/partner/${id}`, { replace: true });
-                } catch {
-                  setError(x.couldNotAccept);
-                } finally {
-                  setBusy(false);
-                }
-              }}
-            >
-              {x.accept}
-            </button>
-          </>
-        )}
-        <button className="btn" onClick={() => navigate('/', { replace: true })}>
-          {x.notNow}
-        </button>
-      </div>
+      {choosing ? (
+        <div className="card stack">
+          <h2>{x.choice.title}</h2>
+          <button
+            className="btn primary"
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true);
+              try {
+                await saveSettings({ mode: 'partner' });
+                navigate('/', { replace: true });
+              } catch (e) {
+                toast(t.common.couldNotSave((e as Error).message));
+                setBusy(false);
+              }
+            }}
+          >
+            {x.choice.follow(choosing.name)}
+          </button>
+          <p className="hint">{x.choice.followHint}</p>
+          <button className="btn" disabled={busy} onClick={() => navigate(`/partner/${choosing.id}`, { replace: true })}>
+            {x.choice.own}
+          </button>
+        </div>
+      ) : (
+        <div className="card stack">
+          {error && <p>{error}</p>}
+          {preview?.own && <p>{x.own}</p>}
+          {preview && !preview.own && (
+            <>
+              <h2>{x.wants(preview.name)}</h2>
+              <p className="small muted">{x.youllSee}</p>
+              <ul className="small">
+                <li>{x.always}</li>
+                {preview.scopes.map((s) => (
+                  <li key={s}>{t.scopes[s as ShareScope]?.body}</li>
+                ))}
+              </ul>
+              <p className="hint">{x.never(preview.name)}</p>
+              <button
+                className="btn primary"
+                disabled={busy}
+                onClick={async () => {
+                  setBusy(true);
+                  try {
+                    const { id } = await api.shares.accept(code);
+                    toast(x.accepted);
+                    if (settings.mode === 'own' && days.size === 0) setChoosing({ id, name: preview.name });
+                    else navigate(settings.mode === 'partner' ? '/' : `/partner/${id}`, { replace: true });
+                  } catch {
+                    setError(x.couldNotAccept);
+                  } finally {
+                    setBusy(false);
+                  }
+                }}
+              >
+                {x.accept}
+              </button>
+            </>
+          )}
+          <button className="btn" onClick={() => navigate('/', { replace: true })}>
+            {x.notNow}
+          </button>
+        </div>
+      )}
     </>
   );
 }

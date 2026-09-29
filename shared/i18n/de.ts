@@ -401,6 +401,13 @@ export const de: Messages = {
       button: 'Alle meine Daten löschen',
       lastAdmin: 'Du bist die letzte Administratorin bzw. der letzte Administrator: Ernenne zuerst jemand anderen.',
     },
+    mode: {
+      title: 'Wie du Ebbwell nutzt',
+      partnerBody: 'Du folgst nur den Zyklen, die mit dir geteilt werden. Das Tracking deines eigenen Zyklus ist ausgeblendet.',
+      startTracking: 'Meinen eigenen Zyklus tracken',
+      partnerOnly: 'Nur geteilten Zyklen folgen',
+      partnerOnlyHint: 'Blendet dein eigenes Tracking aus. Du kannst jederzeit zurückwechseln, es wird nichts gelöscht.',
+    },
     feedback: {
       title: 'Feedback',
       body: 'Einen Fehler gefunden oder fehlt dir etwas? Sag es uns auf GitHub (ein kostenloses Konto ist nötig). Vorausgefüllt werden nur die App-Version und dein Gerätetyp, niemals deine Zyklusdaten.',
@@ -697,6 +704,13 @@ export const de: Messages = {
     },
   },
 
+  partnerHome: {
+    title: 'Mit dir geteilt',
+    none: 'Noch wird nichts mit dir geteilt.',
+    noneHint: 'Bitte deine:n Partner:in, unter Einstellungen → Mit Partner:in teilen einen Einladungslink zu erstellen, und öffne ihn auf diesem Gerät.',
+    trackOwn: 'Stattdessen meinen eigenen Zyklus tracken',
+  },
+
   invite: {
     title: 'Einladung',
     incomplete: 'Dieser Einladungslink ist unvollständig.',
@@ -710,6 +724,12 @@ export const de: Messages = {
     couldNotAccept: 'Diese Einladung konnte nicht angenommen werden.',
     accept: 'Annehmen',
     notNow: 'Nicht jetzt',
+    choice: {
+      title: 'Wie möchtest du Ebbwell nutzen?',
+      follow: (name: string) => `Nur dem Zyklus von ${name} folgen`,
+      followHint: 'Die App zeigt nur, was mit dir geteilt wird. Deinen eigenen Zyklus kannst du später in den Einstellungen tracken.',
+      own: 'Auch meinen eigenen Zyklus tracken',
+    },
   },
 
   auth: {

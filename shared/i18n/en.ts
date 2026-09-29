@@ -397,6 +397,13 @@ export const en = {
       button: 'Delete all my data',
       lastAdmin: 'You are the last administrator: make someone else an administrator first.',
     },
+    mode: {
+      title: 'How you use Ebbwell',
+      partnerBody: 'You only follow the cycles shared with you. Tracking your own cycle is hidden.',
+      startTracking: 'Start tracking my own cycle',
+      partnerOnly: 'Only follow shared cycles',
+      partnerOnlyHint: 'Hides your own tracking. You can switch back at any time; nothing is deleted.',
+    },
     feedback: {
       title: 'Feedback',
       body: 'Found a bug, or missing something? Tell us on GitHub (a free account is needed). Only the app version and your device type are filled in for you, never your cycle data.',
@@ -690,6 +697,13 @@ export const en = {
     },
   },
 
+  partnerHome: {
+    title: 'Shared with you',
+    none: 'Nothing is shared with you yet.',
+    noneHint: 'Ask your partner to create an invite link in Settings → Sharing with a partner, then open it on this device.',
+    trackOwn: 'Track my own cycle instead',
+  },
+
   invite: {
     title: 'Invitation',
     incomplete: 'This invite link is incomplete.',
@@ -703,6 +717,12 @@ export const en = {
     couldNotAccept: 'This invite could not be accepted.',
     accept: 'Accept',
     notNow: 'Not now',
+    choice: {
+      title: 'How will you use Ebbwell?',
+      follow: (name: string) => `Only follow ${name}'s cycle`,
+      followHint: 'The app shows only what is shared with you. You can start tracking your own cycle later in Settings.',
+      own: 'Also track my own cycle',
+    },
   },
 
   /** Server-rendered sign-in pages. */

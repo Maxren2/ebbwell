@@ -143,7 +143,12 @@ Sessions last 14 days of inactivity and 90 days at most. You can change this wit
 
 ## 8. Partner sharing
 
-*Settings → Sharing with a partner → Invite a partner* creates a single-use link, valid 7 days. The partner needs their own account in the allowed group.
+*Settings → Sharing with a partner → Invite a partner* creates a single-use link, valid 7 days. The partner needs their own account: in Authentik, add them to the group in `OIDC_ALLOWED_GROUPS` (if you set one), or create a local account for them.
+
+If the partner opens the link while signed out, the invite reopens after they sign in. Someone who hasn't logged anything yet is then asked how they'll use Ebbwell:
+
+- **Only follow the shared cycle** (partner-only): the app shows just the shared cycle and Settings, and sends only the partner reminder. They can start tracking their own cycle later in Settings; nothing is deleted either way.
+- **Also track my own cycle**: the full app, with the shared cycle on Today.
 
 - The partner gets a read-only view: period predictions and cycle day, plus the scopes the owner picked (fertility, history, symptoms and mood).
 - Notes, sex, pregnancy tests and cervix observations are never shared.

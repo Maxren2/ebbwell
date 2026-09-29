@@ -100,6 +100,8 @@ export type NotificationSettings = z.infer<typeof NotificationSettingsSchema>;
 
 export const SettingsSchema = z
   .object({
+    /** "partner": only follows cycles shared with this user (no own tracking, no own reminders). */
+    mode: z.enum(['own', 'partner']).default('own'),
     goal: z.enum(['track', 'conceive', 'avoid']).default('track'),
     /** Pregnancy / postpartum / pause: no predictions. */
     paused: z.boolean().default(false),

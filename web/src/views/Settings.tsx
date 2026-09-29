@@ -16,6 +16,26 @@ function deviceName(ua: string, unknown: string): string {
   return browser ? `${os} · ${browser}` : os;
 }
 
+function LanguageField({ value, onChange }: { value: Settings['language']; onChange: (v: Settings['language']) => void }) {
+  const t = useT();
+  const s = t.settings;
+  return (
+    <label className="field">
+      <span>{s.language}</span>
+      <select value={value} onChange={(e) => onChange(e.target.value as Settings['language'])}>
+        <option value="auto">
+          {s.languageAuto} ({LANGUAGE_NAMES[deviceLanguage()]})
+        </option>
+        {LANGUAGES.map((l) => (
+          <option key={l} value={l} lang={l}>
+            {LANGUAGE_NAMES[l]}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
 /** The feedback address; GitHub issue forms also take the template and field values from the query. */
 function feedbackLink(base: string, kind: 'bug' | 'feature'): string {
   const url = new URL(base);
@@ -50,65 +70,70 @@ export function SettingsView() {
       </header>
 
       <div className="stack">
-        <section className="card stack">
-          <h3>{s.goal}</h3>
-          <Seg
-            label={s.goal}
-            allowNone={false}
-            value={settings.goal}
-            options={['track', 'conceive', 'avoid'] as const}
-            labels={s.goals}
-            onChange={(v) => v && update({ goal: v })}
-          />
-          {settings.goal === 'avoid' && <NfpAcknowledge />}
-          <Switch label={s.pause} hint={s.pauseHint} checked={settings.paused} onChange={(v) => update({ paused: v })} />
-        </section>
+        {settings.mode === 'partner' ? (
+          <>
+            <section className="card stack">
+              <h3>{s.mode.title}</h3>
+              <p className="small muted">{s.mode.partnerBody}</p>
+              <button className="btn" onClick={() => update({ mode: 'own' })}>
+                {s.mode.startTracking}
+              </button>
+            </section>
+            <section className="card stack">
+              <LanguageField value={settings.language} onChange={(language) => update({ language })} />
+            </section>
+          </>
+        ) : (
+          <>
+            <section className="card stack">
+              <h3>{s.goal}</h3>
+              <Seg
+                label={s.goal}
+                allowNone={false}
+                value={settings.goal}
+                options={['track', 'conceive', 'avoid'] as const}
+                labels={s.goals}
+                onChange={(v) => v && update({ goal: v })}
+              />
+              {settings.goal === 'avoid' && <NfpAcknowledge />}
+              <Switch label={s.pause} hint={s.pauseHint} checked={settings.paused} onChange={(v) => update({ paused: v })} />
+            </section>
 
-        <section className="card">
-          <h3>{s.whatToTrack}</h3>
-          <Switch label={s.track.temperature} hint={s.track.temperatureHint} checked={settings.track.temperature} onChange={(v) => track('temperature', v)} />
-          <Switch label={s.track.mucus} hint={s.track.mucusHint} checked={settings.track.mucus} onChange={(v) => track('mucus', v)} />
-          <Switch label={s.track.cervix} checked={settings.track.cervix} onChange={(v) => track('cervix', v)} />
-          <Switch label={s.track.lh} checked={settings.track.lh} onChange={(v) => track('lh', v)} />
-          <Switch label={s.track.pregnancyTest} checked={settings.track.pregnancyTest} onChange={(v) => track('pregnancyTest', v)} />
-          <Switch label={s.track.sex} checked={settings.track.sex} onChange={(v) => track('sex', v)} />
-          <Switch label={s.track.symptoms} checked={settings.track.symptoms} onChange={(v) => track('symptoms', v)} />
-          <Switch label={s.track.mood} checked={settings.track.mood} onChange={(v) => track('mood', v)} />
-        </section>
+            <section className="card">
+              <h3>{s.whatToTrack}</h3>
+              <Switch label={s.track.temperature} hint={s.track.temperatureHint} checked={settings.track.temperature} onChange={(v) => track('temperature', v)} />
+              <Switch label={s.track.mucus} hint={s.track.mucusHint} checked={settings.track.mucus} onChange={(v) => track('mucus', v)} />
+              <Switch label={s.track.cervix} checked={settings.track.cervix} onChange={(v) => track('cervix', v)} />
+              <Switch label={s.track.lh} checked={settings.track.lh} onChange={(v) => track('lh', v)} />
+              <Switch label={s.track.pregnancyTest} checked={settings.track.pregnancyTest} onChange={(v) => track('pregnancyTest', v)} />
+              <Switch label={s.track.sex} checked={settings.track.sex} onChange={(v) => track('sex', v)} />
+              <Switch label={s.track.symptoms} checked={settings.track.symptoms} onChange={(v) => track('symptoms', v)} />
+              <Switch label={s.track.mood} checked={settings.track.mood} onChange={(v) => track('mood', v)} />
+            </section>
 
-        <section className="card stack">
-          <h3>{s.units}</h3>
-          <label className="field">
-            <span>{s.language}</span>
-            <select value={settings.language} onChange={(e) => update({ language: e.target.value as Settings['language'] })}>
-              <option value="auto">
-                {s.languageAuto} ({LANGUAGE_NAMES[deviceLanguage()]})
-              </option>
-              {LANGUAGES.map((l) => (
-                <option key={l} value={l} lang={l}>
-                  {LANGUAGE_NAMES[l]}
-                </option>
-              ))}
-            </select>
-          </label>
-          <Seg
-            label={s.temperatureUnit}
-            allowNone={false}
-            value={settings.temperatureUnit}
-            options={['C', 'F'] as const}
-            labels={{ C: '°C', F: '°F' }}
-            onChange={(v) => v && update({ temperatureUnit: v })}
-          />
-          <div className="grid-2">
-            <NumberSetting label={s.cycleLength} value={settings.defaultCycleLength} min={18} max={60} onSave={(v) => update({ defaultCycleLength: v })} />
-            <NumberSetting label={s.periodLength} value={settings.defaultPeriodLength} min={1} max={12} onSave={(v) => update({ defaultPeriodLength: v })} />
-          </div>
-        </section>
+            <section className="card stack">
+              <h3>{s.units}</h3>
+              <LanguageField value={settings.language} onChange={(language) => update({ language })} />
+              <Seg
+                label={s.temperatureUnit}
+                allowNone={false}
+                value={settings.temperatureUnit}
+                options={['C', 'F'] as const}
+                labels={{ C: '°C', F: '°F' }}
+                onChange={(v) => v && update({ temperatureUnit: v })}
+              />
+              <div className="grid-2">
+                <NumberSetting label={s.cycleLength} value={settings.defaultCycleLength} min={18} max={60} onSave={(v) => update({ defaultCycleLength: v })} />
+                <NumberSetting label={s.periodLength} value={settings.defaultPeriodLength} min={1} max={12} onSave={(v) => update({ defaultPeriodLength: v })} />
+              </div>
+            </section>
+          </>
+        )}
 
         <NotificationsSection />
         <LockSection />
         <SharingSection />
-        <DataSection />
+        {settings.mode === 'own' && <DataSection />}
         <AccountSection />
         {me.account.isAdmin && <AdminSection />}
         <SecuritySection />

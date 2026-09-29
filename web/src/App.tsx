@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { isIsoDate } from '../../shared/dates.ts';
 import { I18nProvider, useT } from './i18n.tsx';
 import { SCROLLER_ID, navigate, usePath } from './router.ts';
-import { StoreProvider } from './store.tsx';
+import { StoreProvider, useStore } from './store.tsx';
 import { Icon, ToastProvider, type IconName } from './ui.tsx';
 import { Today } from './views/Today.tsx';
 import { CalendarView } from './views/Calendar.tsx';
@@ -11,7 +11,7 @@ import { ChartView } from './views/Chart.tsx';
 import { Insights } from './views/Insights.tsx';
 import { SettingsView } from './views/Settings.tsx';
 import { LockScreen } from './views/LockScreen.tsx';
-import { InviteAccept, PartnerPage } from './views/Partner.tsx';
+import { InviteAccept, PartnerHome, PartnerPage } from './views/Partner.tsx';
 
 const TABS: { path: string; label: 'today' | 'calendar' | 'chart' | 'insights' | 'settings'; icon: IconName }[] = [
   { path: '/', label: 'today', icon: 'today' },
@@ -20,6 +20,8 @@ const TABS: { path: string; label: 'today' | 'calendar' | 'chart' | 'insights' |
   { path: '/insights', label: 'insights', icon: 'insights' },
   { path: '/settings', label: 'settings', icon: 'settings' },
 ];
+/** Partner-only accounts: the shared cycles and the settings. */
+const PARTNER_TABS = TABS.filter((tab) => tab.path === '/' || tab.path === '/settings');
 
 function useOnline() {
   const [online, setOnline] = useState(navigator.onLine);
@@ -64,11 +66,14 @@ function Splash({ error }: { error: string | null }) {
 
 function Routes() {
   const path = usePath();
-  const dayMatch = /^\/day\/(\d{4}-\d{2}-\d{2})$/.exec(path);
-  if (dayMatch && isIsoDate(dayMatch[1]!)) return <DayEditor date={dayMatch[1]!} />;
+  const { settings } = useStore();
   const partnerMatch = /^\/partner\/([0-9a-f-]{36})$/.exec(path);
   if (partnerMatch) return <PartnerPage id={partnerMatch[1]!} />;
   if (path === '/invite') return <InviteAccept />;
+  if (path === '/settings') return <SettingsView />;
+  if (settings.mode === 'partner') return <PartnerHome />;
+  const dayMatch = /^\/day\/(\d{4}-\d{2}-\d{2})$/.exec(path);
+  if (dayMatch && isIsoDate(dayMatch[1]!)) return <DayEditor date={dayMatch[1]!} />;
   switch (path) {
     case '/calendar':
       return <CalendarView />;
@@ -76,8 +81,6 @@ function Routes() {
       return <ChartView />;
     case '/insights':
       return <Insights />;
-    case '/settings':
-      return <SettingsView />;
     default:
       return <Today />;
   }
@@ -93,9 +96,7 @@ export function App() {
 
 function Shell() {
   const t = useT();
-  const path = usePath();
   const online = useOnline();
-  const active = TABS.find((t) => t.path !== '/' && path.startsWith(t.path))?.path ?? (/^\/(day|partner|invite)/.test(path) ? '' : '/');
 
   return (
     <ToastProvider>
@@ -107,16 +108,27 @@ function Shell() {
               <Routes />
             </div>
           </main>
-          <nav className="tabbar" aria-label={t.nav.main}>
-            {TABS.map((tab) => (
-              <button key={tab.path} aria-current={active === tab.path ? 'page' : undefined} onClick={() => navigate(tab.path)}>
-                <Icon name={tab.icon} />
-                {t.nav[tab.label]}
-              </button>
-            ))}
-          </nav>
+          <TabBar />
         </div>
       </StoreProvider>
     </ToastProvider>
+  );
+}
+
+function TabBar() {
+  const t = useT();
+  const path = usePath();
+  const { settings } = useStore();
+  const tabs = settings.mode === 'partner' ? PARTNER_TABS : TABS;
+  const active = tabs.find((t) => t.path !== '/' && path.startsWith(t.path))?.path ?? (/^\/(day|partner|invite)/.test(path) ? '' : '/');
+  return (
+    <nav className="tabbar" style={{ gridTemplateColumns: `repeat(${tabs.length}, 1fr)` }} aria-label={t.nav.main}>
+      {tabs.map((tab) => (
+        <button key={tab.path} aria-current={active === tab.path ? 'page' : undefined} onClick={() => navigate(tab.path)}>
+          <Icon name={tab.icon} />
+          {t.nav[tab.label]}
+        </button>
+      ))}
+    </nav>
   );
 }

@@ -33,7 +33,7 @@ Calendar-only period apps predict the ovulation day correctly only about 8–21%
 | Sensiplan evaluation | Opt-in for people who learned the method: 5-day / minus-8 rules, post-ovulatory double check |
 | Reminders | Web Push: morning temperature, evening check-in, period coming, fertile window, partner's period. Discreet wording by default |
 | App lock | Server-enforced PIN, Face ID / Touch ID / fingerprint (WebAuthn), auto-lock, lockout after 5 wrong PINs, PIN reset only after a fresh identity-provider login |
-| Partner sharing | Single-use invite link; read-only view with owner-chosen scopes (fertility, history, symptoms & mood). Notes and intimate details are never shared |
+| Partner sharing | Single-use invite link; read-only view with owner-chosen scopes (fertility, history, symptoms & mood). Notes and intimate details are never shared. Partners can use a follow-only mode without tracking anything themselves |
 | Accounts | Single sign-on (OIDC + PKCE) and/or local accounts. You choose where passwords are accepted: nowhere, local network only (never through the public domain), or everywhere. Optional or required two-factor authentication (authenticator app + recovery codes). Admin panel: create/reset/disable accounts, reset 2FA; admins never see cycle data |
 | Security | Hashed server-side sessions, device list, CSRF protection, rate limiting and account lockout, audit log, key rotation, daily encrypted backups |
 | Platforms | Installable PWA (iOS 16.4+, Android, desktop), light/dark, offline app shell |

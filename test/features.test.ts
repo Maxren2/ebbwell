@@ -259,6 +259,33 @@ describe('notifications', () => {
     expect(pushed.at(-1)!.payload).toMatchObject({ body: "Alice's period is expected tomorrow" });
   });
 
+  it('sends a partner-only account the partner reminder but nothing about its own cycle', async () => {
+    const owner = signIn('Alice');
+    const partner = signIn('Bob');
+    store.savePushSubscription('p1', partner.user.id, subscription(2), 'ua');
+    const current = logCycles(owner.user.id, '2026-01-01', [28, 28, 28, 28]);
+    logCycles(partner.user.id, '2026-01-02', [28, 28, 28, 28]); // e.g. logged before switching
+    store.createShare(owner.user.id, partner.user.id, []);
+    settingsFor(partner.user.id, (s) => {
+      s.mode = 'partner';
+      s.notifications.discreet = false;
+      s.notifications.temperature = { enabled: true, time: '06:30' };
+      s.notifications.log = { enabled: true, time: '21:00' };
+      s.notifications.period = { enabled: true, daysBefore: 2 };
+      s.notifications.partner = { enabled: true, daysBefore: 1 };
+    });
+    const day = addDays(current, 27); // Bob's own period is due in 2 days: that reminder would be due too
+    expect(await runReminders(store, send, new Date(`${day}T06:35:00Z`))).toBe(0);
+    expect(await runReminders(store, send, new Date(`${day}T21:05:00Z`))).toBe(0);
+    expect(await runReminders(store, send, new Date(`${day}T09:00:00Z`))).toBe(1);
+    expect(pushed.map((p) => p.payload.body)).toEqual(["Alice's period is expected tomorrow"]);
+
+    // Back to tracking their own cycle: the own reminders come back.
+    store.saveSettings(partner.user.id, { ...store.getSettings(partner.user.id), mode: 'own' });
+    expect(await runReminders(store, send, new Date(`${day}T09:30:00Z`))).toBe(1);
+    expect(pushed.at(-1)!.payload.body).toBe('Your period is expected in 2 days');
+  });
+
   it("writes reminders in the user's language (device language when set to automatic)", async () => {
     const a = signIn('Alice');
     store.savePushSubscription('s1', a.user.id, subscription(), 'ua');

@@ -108,11 +108,15 @@ export function NotificationsSection() {
       )}
 
       <div className="divider" />
-      <TimedSwitch label={x.morning} hint={x.morningHint} value={n.temperature} onChange={(temperature) => update({ temperature })} />
-      <TimedSwitch label={x.evening} hint={x.eveningHint} value={n.log} onChange={(log) => update({ log })} />
-      <Switch label={x.period} checked={n.period.enabled} onChange={(enabled) => update({ period: { ...n.period, enabled } })} />
-      {n.period.enabled && <DaysBefore value={n.period.daysBefore} onChange={(daysBefore) => update({ period: { ...n.period, daysBefore } })} />}
-      {settings.goal !== 'track' && <Switch label={x.fertile} checked={n.fertile.enabled} onChange={(enabled) => update({ fertile: { enabled } })} />}
+      {settings.mode === 'own' && (
+        <>
+          <TimedSwitch label={x.morning} hint={x.morningHint} value={n.temperature} onChange={(temperature) => update({ temperature })} />
+          <TimedSwitch label={x.evening} hint={x.eveningHint} value={n.log} onChange={(log) => update({ log })} />
+          <Switch label={x.period} checked={n.period.enabled} onChange={(enabled) => update({ period: { ...n.period, enabled } })} />
+          {n.period.enabled && <DaysBefore value={n.period.daysBefore} onChange={(daysBefore) => update({ period: { ...n.period, daysBefore } })} />}
+          {settings.goal !== 'track' && <Switch label={x.fertile} checked={n.fertile.enabled} onChange={(enabled) => update({ fertile: { enabled } })} />}
+        </>
+      )}
       <Switch label={x.partner} hint={x.partnerHint} checked={n.partner.enabled} onChange={(enabled) => update({ partner: { ...n.partner, enabled } })} />
       {n.partner.enabled && <DaysBefore value={n.partner.daysBefore} onChange={(daysBefore) => update({ partner: { ...n.partner, daysBefore } })} />}
       <label className="field">
@@ -378,9 +382,11 @@ function ScopePicker({ value, onChange }: { value: ShareScope[]; onChange: (v: S
 }
 
 export function SharingSection() {
+  const { settings, saveSettings } = useStore();
   const t = useT();
   const x = t.sharing;
   const toast = useToast();
+  const partnerOnly = settings.mode === 'partner';
   const [info, setInfo] = useState<SharesInfo | null>(null);
   const [scopes, setScopes] = useState<ShareScope[]>([]);
   const [invite, setInvite] = useState<{ url: string; expiresAt: number } | null>(null);
@@ -415,87 +421,88 @@ export function SharingSection() {
   return (
     <section className="card stack">
       <h3>{x.title}</h3>
-      <p className="small muted">{x.intro}</p>
-
-      {info?.asOwner.length ? (
-        <div className="list">
-          {info.asOwner.map((s) => (
-            <details key={s.id}>
-              <summary>
-                {s.name} <span className="small muted">· {x.since(fmtDay(s.createdAt))}</span>
-              </summary>
-              <div className="stack" style={{ marginTop: 8 }}>
-                <ScopePicker
-                  value={s.scopes}
-                  onChange={async (v) => {
-                    await api.shares.update(s.id, v);
-                    void load();
-                  }}
-                />
-                <button
-                  className="btn danger"
-                  onClick={async () => {
-                    if (!confirm(x.stopConfirm(s.name))) return;
-                    await api.shares.end(s.id);
-                    void load();
-                  }}
-                >
-                  {x.stop}
+      {!partnerOnly && (
+        <>
+          <p className="small muted">{x.intro}</p>
+          {info?.asOwner.length ? (
+            <div className="list">
+              {info.asOwner.map((s) => (
+                <details key={s.id}>
+                  <summary>
+                    {s.name} <span className="small muted">· {x.since(fmtDay(s.createdAt))}</span>
+                  </summary>
+                  <div className="stack" style={{ marginTop: 8 }}>
+                    <ScopePicker
+                      value={s.scopes}
+                      onChange={async (v) => {
+                        await api.shares.update(s.id, v);
+                        void load();
+                      }}
+                    />
+                    <button
+                      className="btn danger"
+                      onClick={async () => {
+                        if (!confirm(x.stopConfirm(s.name))) return;
+                        await api.shares.end(s.id);
+                        void load();
+                      }}
+                    >
+                      {x.stop}
+                    </button>
+                  </div>
+                </details>
+              ))}
+            </div>
+          ) : null}
+          {info?.invites.map((i) => (
+            <div key={i.id} className="spread small">
+              <span>{x.pending(fmtDay(i.expiresAt))}</span>
+              <button
+                className="btn"
+                style={{ minHeight: 32 }}
+                onClick={async () => {
+                  await api.shares.revokeInvite(i.id);
+                  if (invite) setInvite(null);
+                  void load();
+                }}
+              >
+                {x.revoke}
+              </button>
+            </div>
+          ))}
+          {invite ? (
+            <div className="card tone-ovulation stack">
+              <strong>{x.inviteTitle}</strong>
+              <code className="invite-url" dir="ltr">
+                {invite.url}
+              </code>
+              <div className="grid-2">
+                <button className="btn primary" onClick={() => shareLink(invite.url)}>
+                  {x.shareLink}
+                </button>
+                <button className="btn" onClick={() => setInvite(null)}>
+                  {t.common.done}
                 </button>
               </div>
-            </details>
-          ))}
-        </div>
-      ) : null}
-
-      {info?.invites.map((i) => (
-        <div key={i.id} className="spread small">
-          <span>{x.pending(fmtDay(i.expiresAt))}</span>
-          <button
-            className="btn"
-            style={{ minHeight: 32 }}
-            onClick={async () => {
-              await api.shares.revokeInvite(i.id);
-              if (invite) setInvite(null);
-              void load();
-            }}
-          >
-            {x.revoke}
-          </button>
-        </div>
-      ))}
-
-      {invite ? (
-        <div className="card tone-ovulation stack">
-          <strong>{x.inviteTitle}</strong>
-          <code className="invite-url" dir="ltr">
-            {invite.url}
-          </code>
-          <div className="grid-2">
-            <button className="btn primary" onClick={() => shareLink(invite.url)}>
-              {x.shareLink}
+            </div>
+          ) : inviting ? (
+            <div className="stack">
+              <ScopePicker value={scopes} onChange={setScopes} />
+              <button className="btn primary" onClick={create}>
+                {x.createInvite}
+              </button>
+            </div>
+          ) : (
+            <button className="btn" onClick={() => setInviting(true)}>
+              {x.invite}
             </button>
-            <button className="btn" onClick={() => setInvite(null)}>
-              {t.common.done}
-            </button>
-          </div>
-        </div>
-      ) : inviting ? (
-        <div className="stack">
-          <ScopePicker value={scopes} onChange={setScopes} />
-          <button className="btn primary" onClick={create}>
-            {x.createInvite}
-          </button>
-        </div>
-      ) : (
-        <button className="btn" onClick={() => setInviting(true)}>
-          {x.invite}
-        </button>
+          )}
+        </>
       )}
 
       {info?.asPartner.length ? (
         <>
-          <div className="divider" />
+          {!partnerOnly && <div className="divider" />}
           <strong className="small">{x.sharedWithYou}</strong>
           <div className="list">
             {info.asPartner.map((s) => (
@@ -507,6 +514,14 @@ export function SharingSection() {
               </div>
             ))}
           </div>
+          {!partnerOnly && (
+            <>
+              <button className="btn" onClick={() => saveSettings({ mode: 'partner' }).catch((e: Error) => toast(t.common.couldNotSave(e.message)))}>
+                {t.settings.mode.partnerOnly}
+              </button>
+              <p className="hint">{t.settings.mode.partnerOnlyHint}</p>
+            </>
+          )}
         </>
       ) : null}
     </section>

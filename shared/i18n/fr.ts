@@ -399,6 +399,13 @@ export const fr: Messages = {
       button: 'Supprimer toutes mes données',
       lastAdmin: "Vous êtes le dernier administrateur : nommez d'abord quelqu'un d'autre administrateur.",
     },
+    mode: {
+      title: 'Votre utilisation d’Ebbwell',
+      partnerBody: 'Vous suivez uniquement les cycles partagés avec vous. Le suivi de votre propre cycle est masqué.',
+      startTracking: 'Suivre mon propre cycle',
+      partnerOnly: 'Suivre uniquement les cycles partagés',
+      partnerOnlyHint: 'Masque votre propre suivi. Vous pouvez revenir en arrière à tout moment, rien n’est supprimé.',
+    },
     feedback: {
       title: 'Vos retours',
       body: "Un bug, ou quelque chose qui manque ? Dites-le-nous sur GitHub (un compte gratuit est nécessaire). Seuls la version de l'app et le type d'appareil sont pré-remplis, jamais vos données de cycle.",
@@ -697,6 +704,13 @@ export const fr: Messages = {
     },
   },
 
+  partnerHome: {
+    title: 'Partagé avec vous',
+    none: 'Rien n’est encore partagé avec vous.',
+    noneHint: 'Demandez à votre partenaire de créer un lien d’invitation dans Réglages → Partage avec un·e partenaire, puis ouvrez-le sur cet appareil.',
+    trackOwn: 'Suivre plutôt mon propre cycle',
+  },
+
   invite: {
     title: 'Invitation',
     incomplete: "Ce lien d'invitation est incomplet.",
@@ -710,6 +724,12 @@ export const fr: Messages = {
     couldNotAccept: "Cette invitation n'a pas pu être acceptée.",
     accept: 'Accepter',
     notNow: 'Pas maintenant',
+    choice: {
+      title: 'Comment allez-vous utiliser Ebbwell ?',
+      follow: (name: string) => `Suivre uniquement le cycle de ${name}`,
+      followHint: 'L’app affiche seulement ce qui est partagé avec vous. Vous pourrez suivre votre propre cycle plus tard dans les Réglages.',
+      own: 'Suivre aussi mon propre cycle',
+    },
   },
 
   auth: {

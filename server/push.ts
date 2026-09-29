@@ -137,13 +137,15 @@ export async function runReminders(store: Store, send: PushSender, now: Date = n
         if (!store.claimNotification(userId, kind, key)) return;
         if ((await sendToUser(store, send, userId, { title: 'Ebbwell', ...payload })) > 0) sent++;
       };
+      // Partner-only accounts don't track a cycle of their own.
+      const own = settings.mode === 'own';
 
-      if (n.temperature.enabled && settings.track.temperature && due(n.temperature.time)) {
+      if (own && n.temperature.enabled && settings.track.temperature && due(n.temperature.time)) {
         if (!store.getDay(userId, date)?.temperature) {
           await notify('temperature', date, { body: reminderText('temperature', n.discreet, {}, lang), tag: 'temperature', url: `/day/${date}` });
         }
       }
-      if (n.log.enabled && due(n.log.time)) {
+      if (own && n.log.enabled && due(n.log.time)) {
         const day = store.getDay(userId, date);
         if (!day?.mucus && !day?.symptoms?.length && !day?.mood?.length) {
           await notify('log', date, { body: reminderText('log', n.discreet, {}, lang), tag: 'log', url: `/day/${date}` });
@@ -151,7 +153,7 @@ export async function runReminders(store: Store, send: PushSender, now: Date = n
       }
 
       if (due(n.time)) {
-        if (!settings.paused && (n.period.enabled || n.fertile.enabled)) {
+        if (own && !settings.paused && (n.period.enabled || n.fertile.enabled)) {
           const { analysis } = analysisFor(userId, date);
           const next = analysis.predictions[1]?.start.date;
           if (n.period.enabled && next && !analysis.current?.inPeriod && diffDays(date, next) === n.period.daysBefore) {
