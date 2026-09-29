@@ -160,6 +160,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
         twoFactorSetupRequired: twoFactorSetupRequired(config, u),
       },
       oidc: oidcEnabled(config),
+      feedbackUrl: config.FEEDBACK_URL,
     };
   });
 

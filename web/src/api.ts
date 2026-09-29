@@ -8,6 +8,8 @@ export interface Me {
   settings: Settings;
   authMode: 'standard' | 'dev';
   oidc: boolean;
+  /** Where feedback goes, or null when the administrator turned it off. */
+  feedbackUrl: string | null;
   account: {
     kind: 'oidc' | 'local' | 'dev';
     username: string | null;

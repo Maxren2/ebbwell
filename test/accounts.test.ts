@@ -113,6 +113,15 @@ describe('configuration', () => {
     expect(() => loadConfig({ ...base, ADMIN_USERNAME: 'admin', ADMIN_PASSWORD: 'short' })).toThrow();
     expect(() => loadConfig({ ...base, ADMIN_USERNAME: 'Bad Name', ADMIN_PASSWORD: 'long-enough-password' })).toThrow();
   });
+
+  it('points feedback at an https address, or turns it off', () => {
+    const base = { APP_URL, DATA_ENCRYPTION_KEY: KEY, LOCAL_LOGIN: 'local-network' };
+    expect(loadConfig(base).FEEDBACK_URL).toBe('https://github.com/Maxren2/ebbwell/issues/new');
+    expect(loadConfig({ ...base, FEEDBACK_URL: 'https://forum.example.com/c/ebbwell' }).FEEDBACK_URL).toBe('https://forum.example.com/c/ebbwell');
+    expect(loadConfig({ ...base, FEEDBACK_URL: 'off' }).FEEDBACK_URL).toBeNull();
+    expect(() => loadConfig({ ...base, FEEDBACK_URL: 'javascript:alert(1)' })).toThrow();
+    expect(() => loadConfig({ ...base, FEEDBACK_URL: 'http://example.com' })).toThrow();
+  });
 });
 
 // ---------------------------------------------------------------- sign-in flows

@@ -399,12 +399,19 @@ export const fr: Messages = {
       button: 'Supprimer toutes mes données',
       lastAdmin: "Vous êtes le dernier administrateur : nommez d'abord quelqu'un d'autre administrateur.",
     },
+    feedback: {
+      title: 'Vos retours',
+      body: "Un bug, ou quelque chose qui manque ? Dites-le-nous sur GitHub (un compte gratuit est nécessaire). Seuls la version de l'app et le type d'appareil sont pré-remplis, jamais vos données de cycle.",
+      bug: 'Signaler un bug',
+      feature: 'Proposer une fonctionnalité',
+    },
     about: {
       title: 'À propos',
       body: "Ebbwell estime les cycles à partir de votre propre historique et confirme l'ovulation grâce aux signes du corps (règles de température et de glaire Sensiplan). Ce n'est ni un dispositif médical ni un contraceptif. Consultez un·e professionnel·le de santé en cas d'absence de règles, de cycles très irréguliers, de saignements abondants ou de douleurs.",
       sources: 'Sources :',
       license: 'Logiciel libre (AGPL-3.0-or-later).',
       source: 'Code source',
+      version: (v: string) => `Version ${v}`,
     },
   },
 

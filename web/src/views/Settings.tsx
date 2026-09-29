@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { LANGUAGES, LANGUAGE_NAMES } from '../../../shared/i18n/index.ts';
 import type { Settings } from '../../../shared/schema.ts';
 import { ApiError, api, leaveApp, signOut, type SessionInfo } from '../api.ts';
+import { isStandalone } from '../device.ts';
 import { fmtDateTime } from '../format.ts';
 import { deviceLanguage, useT } from '../i18n.tsx';
 import { useStore } from '../store.tsx';
@@ -13,6 +14,17 @@ function deviceName(ua: string, unknown: string): string {
   const os = /iPhone|iPad/.test(ua) ? (/iPad/.test(ua) ? 'iPad' : 'iPhone') : /Android/.test(ua) ? 'Android' : /Mac OS X/.test(ua) ? 'Mac' : /Windows/.test(ua) ? 'Windows' : /Linux/.test(ua) ? 'Linux' : unknown;
   const browser = /Edg\//.test(ua) ? 'Edge' : /Firefox\//.test(ua) ? 'Firefox' : /Chrome\//.test(ua) ? 'Chrome' : /Safari\//.test(ua) ? 'Safari' : '';
   return browser ? `${os} · ${browser}` : os;
+}
+
+/** The feedback address; GitHub issue forms also take the template and field values from the query. */
+function feedbackLink(base: string, kind: 'bug' | 'feature'): string {
+  const url = new URL(base);
+  if (url.hostname === 'github.com' && url.pathname.endsWith('/issues/new')) {
+    url.searchParams.set('template', `${kind}.yml`);
+    url.searchParams.set('version', __APP_VERSION__);
+    if (kind === 'bug') url.searchParams.set('device', deviceName(navigator.userAgent, 'Other') + (isStandalone() ? ' · installed app' : ' · browser'));
+  }
+  return url.href;
 }
 
 export function SettingsView() {
@@ -101,6 +113,21 @@ export function SettingsView() {
         {me.account.isAdmin && <AdminSection />}
         <SecuritySection />
 
+        {me.feedbackUrl && (
+          <section className="card stack">
+            <h3>{s.feedback.title}</h3>
+            <p className="small muted">{s.feedback.body}</p>
+            <div className="grid-2">
+              <a className="btn" href={feedbackLink(me.feedbackUrl, 'bug')} target="_blank" rel="noopener noreferrer">
+                {s.feedback.bug}
+              </a>
+              <a className="btn" href={feedbackLink(me.feedbackUrl, 'feature')} target="_blank" rel="noopener noreferrer">
+                {s.feedback.feature}
+              </a>
+            </div>
+          </section>
+        )}
+
         <section className="card stack">
           <h3>{s.about.title}</h3>
           <p className="small muted">{s.about.body}</p>
@@ -113,6 +140,8 @@ export function SettingsView() {
             <a href="https://github.com/Maxren2/ebbwell" target="_blank" rel="noopener noreferrer">
               {s.about.source}
             </a>
+            {' · '}
+            {s.about.version(__APP_VERSION__)}
           </p>
         </section>
       </div>

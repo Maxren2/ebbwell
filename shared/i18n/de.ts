@@ -401,12 +401,19 @@ export const de: Messages = {
       button: 'Alle meine Daten löschen',
       lastAdmin: 'Du bist die letzte Administratorin bzw. der letzte Administrator: Ernenne zuerst jemand anderen.',
     },
+    feedback: {
+      title: 'Feedback',
+      body: 'Einen Fehler gefunden oder fehlt dir etwas? Sag es uns auf GitHub (ein kostenloses Konto ist nötig). Vorausgefüllt werden nur die App-Version und dein Gerätetyp, niemals deine Zyklusdaten.',
+      bug: 'Fehler melden',
+      feature: 'Funktion vorschlagen',
+    },
     about: {
       title: 'Über',
       body: 'Ebbwell schätzt Zyklen anhand deiner eigenen Daten und bestätigt den Eisprung über Körperzeichen (Sensiplan-Temperatur- und Schleimregeln). Es ist weder ein Medizinprodukt noch ein Verhütungsmittel. Wende dich bei ausbleibender Periode, sehr unregelmäßigen Zyklen, starken Blutungen oder Schmerzen an eine Ärztin oder einen Arzt.',
       sources: 'Quellen:',
       license: 'Freie Software (AGPL-3.0-or-later).',
       source: 'Quellcode',
+      version: (v: string) => `Version ${v}`,
     },
   },
 

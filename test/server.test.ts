@@ -173,7 +173,9 @@ describe('API (dev auth)', () => {
     expect(list.find((s: { current: boolean }) => s.current).userAgent).toBe('phone');
     await app.inject({ method: 'DELETE', url: '/api/sessions/others', headers: { ...a, ...csrf } });
     expect((await app.inject({ method: 'GET', url: '/api/me', headers: b })).statusCode).toBe(401);
-    expect((await app.inject({ method: 'GET', url: '/api/me', headers: a })).statusCode).toBe(200);
+    const me = await app.inject({ method: 'GET', url: '/api/me', headers: a });
+    expect(me.statusCode).toBe(200);
+    expect(me.json().feedbackUrl).toBe('https://github.com/Maxren2/ebbwell/issues/new');
   });
 
   it('logout destroys the session and answers without delay', async () => {

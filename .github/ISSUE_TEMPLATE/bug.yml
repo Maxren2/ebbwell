@@ -1,0 +1,45 @@
+name: Bug report
+description: Something doesn't work as it should.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time. **Never paste cycle data, health details, screenshots with personal data, URLs of your server or secrets** — this page is public.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: And what did you expect instead?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open Settings
+        2. Turn on reminders
+        3. Scroll down
+  - type: input
+    id: device
+    attributes:
+      label: Device and browser
+      description: Filled in when you use "Report a bug" in the app.
+      placeholder: iPhone · Safari · installed app
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Ebbwell version
+      description: Settings → About.
+      placeholder: 0.5.1
+  - type: dropdown
+    id: sign-in
+    attributes:
+      label: How do you sign in?
+      options:
+        - Single sign-on (OIDC)
+        - Local account
+        - Don't know

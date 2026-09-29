@@ -72,6 +72,12 @@ const EnvSchema = z
     DATA_ENCRYPTION_KEY: key32,
     DATA_ENCRYPTION_KEY_PREVIOUS: key32.optional(),
 
+    /** Where "Report a bug" / "Suggest a feature" lead (https), or "off" to hide them. */
+    FEEDBACK_URL: z
+      .union([z.literal('off'), z.url({ protocol: /^https$/ })])
+      .default('https://github.com/Maxren2/ebbwell/issues/new')
+      .transform((u) => (u === 'off' ? null : u)),
+
     SESSION_IDLE_DAYS: z.coerce.number().min(1).max(365).default(14),
     SESSION_MAX_DAYS: z.coerce.number().min(1).max(365).default(90),
     TRUST_PROXY: z.string().default('loopback,uniquelocal'),

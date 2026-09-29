@@ -164,3 +164,7 @@ Sessions last 14 days of inactivity and 90 days at most. You can change this wit
 ## 11. Updating
 
 The CI publishes `ghcr.io/maxren2/ebbwell` for every version tag (`0.2.0`, …) and `latest` for `main`. Pin a version in the YAML and update it deliberately. Database migrations run automatically at startup, and the daily backup gives you a rollback point.
+
+## 12. Feedback links
+
+*Settings → Feedback* has "Report a bug" and "Suggest a feature" buttons. By default they open the project's GitHub issue forms, with only the app version and the device type (e.g. "iPhone · Safari · installed app") filled in. Nothing is sent until the user submits the form on GitHub. Set `FEEDBACK_URL` to another https address (your own forum or tracker) or to `off` to hide the section.

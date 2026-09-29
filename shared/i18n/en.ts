@@ -397,12 +397,19 @@ export const en = {
       button: 'Delete all my data',
       lastAdmin: 'You are the last administrator: make someone else an administrator first.',
     },
+    feedback: {
+      title: 'Feedback',
+      body: 'Found a bug, or missing something? Tell us on GitHub (a free account is needed). Only the app version and your device type are filled in for you, never your cycle data.',
+      bug: 'Report a bug',
+      feature: 'Suggest a feature',
+    },
     about: {
       title: 'About',
       body: 'Ebbwell estimates cycles from your own history and confirms ovulation from body signs (Sensiplan temperature and mucus rules). It is not a medical device and not a contraceptive. See a clinician for missed periods, very irregular cycles, heavy bleeding or pain.',
       sources: 'Sources:',
       license: 'Free software (AGPL-3.0-or-later).',
       source: 'Source code',
+      version: (v: string) => `Version ${v}`,
     },
   },
 
