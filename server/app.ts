@@ -256,7 +256,6 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     }
     store.deleteUser(uid(request));
     sessions.destroy(request, reply);
-    reply.header('Clear-Site-Data', '"cache", "cookies", "storage"');
     return { redirect: await endSessionUrl(app, config) };
   });
 

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { startAuthentication } from '@simplewebauthn/browser';
-import { ApiError, api, type LockStatus } from '../api.ts';
+import { ApiError, api, signOut, type LockStatus } from '../api.ts';
 import { hasDeviceBiometric, secureContext } from '../device.ts';
 import { useT } from '../i18n.tsx';
 
@@ -127,9 +127,10 @@ export function LockScreen({ onUnlocked }: { onUnlocked: () => void }) {
         <a href="/auth/login?reauth=1">{x.forgot}</a>
         <button
           className="linklike"
+          disabled={busy}
           onClick={async () => {
-            const { redirect } = await api.logout();
-            location.assign(redirect);
+            setBusy(true);
+            await signOut().catch(() => setBusy(false));
           }}
         >
           {t.common.signOut}

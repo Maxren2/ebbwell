@@ -1,6 +1,7 @@
 import type { PublicKeyCredentialCreationOptionsJSON, PublicKeyCredentialRequestOptionsJSON } from '@simplewebauthn/browser';
 import type { PartnerView, ShareScope } from '../../shared/partner.ts';
 import type { DayData, DayEntry, Settings } from '../../shared/schema.ts';
+import { setDeviceBiometric } from './device.ts';
 
 export interface Me {
   name: string;
@@ -123,6 +124,18 @@ async function request<T>(method: string, url: string, body?: unknown, opts: { k
     throw new ApiError(res.status, (err.error as string | undefined) ?? res.statusText, err);
   }
   return res.status === 204 ? (undefined as T) : ((await res.json()) as T);
+}
+
+/** Leaves the app after the session has ended (signed-out page or the identity provider's logout). */
+export function leaveApp(redirect: string) {
+  setDeviceBiometric(false); // the next person on this device must not get the biometric button
+  location.replace(redirect);
+}
+
+/** Ends the session on the server, then leaves the app. */
+export async function signOut() {
+  const { redirect } = await api.logout();
+  leaveApp(redirect);
 }
 
 export const api = {

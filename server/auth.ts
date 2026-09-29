@@ -586,7 +586,10 @@ ${forced ? '' : `<p><a href="/settings">${esc(messages(lang).common.cancel)}</a>
     const kind = request.user?.kind;
     sessions.destroy(request, reply);
     if (userId) store.audit(userId, 'logout');
-    reply.header('Clear-Site-Data', '"cache", "cookies", "storage"');
+    // No Clear-Site-Data: Chrome on Android holds the response until the cache and the service
+    // worker are cleared, which can take long enough that signing out looked broken. The session
+    // cookie is cleared above, API responses are never cached, and the service worker only holds
+    // the app shell.
     return { redirect: kind === 'oidc' ? await endSessionUrl(app, config) : '/signed-out.html' };
   });
 }

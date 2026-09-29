@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { LANGUAGES, LANGUAGE_NAMES } from '../../../shared/i18n/index.ts';
 import type { Settings } from '../../../shared/schema.ts';
-import { ApiError, api, type SessionInfo } from '../api.ts';
+import { ApiError, api, leaveApp, signOut, type SessionInfo } from '../api.ts';
 import { fmtDateTime } from '../format.ts';
 import { deviceLanguage, useT } from '../i18n.tsx';
 import { useStore } from '../store.tsx';
@@ -225,6 +225,7 @@ function SecuritySection() {
   const [sessions, setSessions] = useState<SessionInfo[] | null>(null);
   const [events, setEvents] = useState<{ at: number; event: string }[]>([]);
   const [confirmText, setConfirmText] = useState('');
+  const [leaving, setLeaving] = useState(false);
 
   const load = async () => {
     try {
@@ -282,9 +283,15 @@ function SecuritySection() {
         </details>
         <button
           className="btn primary"
+          disabled={leaving}
           onClick={async () => {
-            const { redirect } = await api.logout();
-            location.assign(redirect);
+            setLeaving(true);
+            try {
+              await signOut();
+            } catch (e) {
+              setLeaving(false);
+              toast((e as Error).message);
+            }
           }}
         >
           {t.common.signOut}
@@ -304,7 +311,7 @@ function SecuritySection() {
           onClick={async () => {
             try {
               const { redirect } = await api.deleteAccount();
-              location.assign(redirect);
+              leaveApp(redirect);
             } catch (e) {
               toast(e instanceof ApiError && e.message === 'last-admin' ? s.deleteAll.lastAdmin : (e as Error).message);
             }

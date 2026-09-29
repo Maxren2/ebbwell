@@ -176,10 +176,13 @@ describe('API (dev auth)', () => {
     expect((await app.inject({ method: 'GET', url: '/api/me', headers: a })).statusCode).toBe(200);
   });
 
-  it('logout destroys the session and clears site data', async () => {
+  it('logout destroys the session and answers without delay', async () => {
     const auth = await login();
     const res = await app.inject({ method: 'POST', url: '/auth/logout', headers: auth });
-    expect(res.headers['clear-site-data']).toContain('storage');
+    expect(res.json()).toEqual({ redirect: '/signed-out.html' });
+    // Clear-Site-Data made Chrome on Android hold the response (sign-out seemed to do nothing).
+    expect(res.headers['clear-site-data']).toBeUndefined();
+    expect(res.headers['set-cookie']).toBeDefined();
     expect((await app.inject({ method: 'GET', url: '/api/me', headers: auth })).statusCode).toBe(401);
   });
 
