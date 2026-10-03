@@ -366,7 +366,7 @@ function SecuritySection() {
           onClick={async () => {
             try {
               const { redirect } = await api.deleteAccount();
-              leaveApp(redirect);
+              await leaveApp(redirect);
             } catch (e) {
               toast(e instanceof ApiError && e.message === 'last-admin' ? s.deleteAll.lastAdmin : (e as Error).message);
             }

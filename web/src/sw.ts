@@ -41,6 +41,31 @@ self.addEventListener('push', (event) => {
   );
 });
 
+// The browser may replace a subscription (expired or rotated keys): register the new one, or
+// reminders stop until the app is opened again.
+interface SubscriptionChange extends ExtendableEvent {
+  oldSubscription?: PushSubscription | null;
+  newSubscription?: PushSubscription | null;
+}
+
+self.addEventListener('pushsubscriptionchange', (e) => {
+  const event = e as SubscriptionChange;
+  event.waitUntil(
+    (async () => {
+      const key = event.oldSubscription?.options.applicationServerKey;
+      const sub =
+        event.newSubscription ?? (key ? await self.registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key }) : null);
+      if (!sub) return;
+      await fetch('/api/push/subscribe', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'x-ebbwell-csrf': '1', 'content-type': 'application/json' },
+        body: JSON.stringify({ subscription: sub.toJSON() }),
+      });
+    })().catch(() => {}),
+  );
+});
+
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   const target = new URL((event.notification.data as { url?: string })?.url ?? '/', self.location.origin);

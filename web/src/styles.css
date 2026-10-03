@@ -99,6 +99,8 @@ h3 {
   display: flex;
   flex-direction: column;
   height: 100dvh;
+  /* Keeps the scrolling content below the status bar instead of sliding under it. */
+  padding-top: env(safe-area-inset-top);
 }
 
 .scroller {
@@ -111,7 +113,7 @@ h3 {
 .app {
   max-width: 640px;
   margin: 0 auto;
-  padding: calc(env(safe-area-inset-top) + 12px) 16px 24px;
+  padding: 12px 16px 24px;
 }
 
 .page-header {
@@ -146,6 +148,7 @@ h3 {
 
 .row {
   display: flex;
+  flex-wrap: wrap; /* narrow phones and longer translations */
   align-items: center;
   gap: 8px;
 }
@@ -425,6 +428,19 @@ textarea {
   border: 1px solid var(--border);
   background: var(--surface-2);
   font-size: 16px; /* prevents iOS zoom */
+}
+
+/* iOS draws date and time fields natively, wider than width: 100% and centred. */
+input[type='time'],
+input[type='date'] {
+  display: block;
+  -webkit-appearance: none;
+  appearance: none;
+  text-align: start;
+}
+
+input::-webkit-date-and-time-value {
+  text-align: start;
 }
 
 textarea {
@@ -737,7 +753,7 @@ textarea {
   top: 0;
   z-index: 30;
   margin: 0 -16px 12px;
-  padding: calc(env(safe-area-inset-top) + 8px) 16px 8px;
+  padding: 8px 16px;
   background: var(--warn-soft);
   color: var(--warn);
   font-size: 0.85rem;

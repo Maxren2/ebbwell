@@ -56,6 +56,13 @@ export function pushSupported(): boolean {
   return secureContext() && 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
 }
 
+/** This browser's push subscription, if any. */
+export async function pushSubscription(): Promise<PushSubscription | null> {
+  if (!pushSupported()) return null;
+  const reg = await navigator.serviceWorker.getRegistration();
+  return (await reg?.pushManager.getSubscription()) ?? null;
+}
+
 export function urlBase64ToUint8Array(base64: string): Uint8Array<ArrayBuffer> {
   const padded = (base64 + '='.repeat((4 - (base64.length % 4)) % 4)).replace(/-/g, '+').replace(/_/g, '/');
   const raw = atob(padded);

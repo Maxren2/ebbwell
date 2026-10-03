@@ -2,9 +2,9 @@ import { useEffect, useState } from 'react';
 import { startRegistration } from '@simplewebauthn/browser';
 import { SHARE_SCOPES, type ShareScope } from '../../../shared/partner.ts';
 import type { NotificationSettings } from '../../../shared/schema.ts';
-import { ApiError, LOCKED_EVENT, api, type LockStatus, type SharesInfo } from '../api.ts';
+import { ApiError, LOCKED_EVENT, api, syncPushSubscription, type LockStatus, type SharesInfo } from '../api.ts';
 import {
-  hasDeviceBiometric, isIos, isStandalone, pushSupported, secureContext, setDeviceBiometric, setVoiceInputChoice, urlBase64ToUint8Array, voiceInputChoice,
+  hasDeviceBiometric, isIos, isStandalone, pushSubscription, pushSupported, secureContext, setDeviceBiometric, setVoiceInputChoice, urlBase64ToUint8Array, voiceInputChoice,
   type VoiceInput,
 } from '../device.ts';
 import { fmtDay } from '../format.ts';
@@ -15,12 +15,6 @@ import { Seg, Switch, useToast } from '../ui.tsx';
 import { prepareVoice, removeVoiceModel, voiceModelCached, voiceSupported } from '../voice.ts';
 
 // ------------------------------------------------------------------ notifications
-
-async function currentSubscription(): Promise<PushSubscription | null> {
-  if (!pushSupported()) return null;
-  const reg = await navigator.serviceWorker.getRegistration();
-  return (await reg?.pushManager.getSubscription()) ?? null;
-}
 
 export function NotificationsSection() {
   const { settings, saveSettings } = useStore();
@@ -34,7 +28,7 @@ export function NotificationsSection() {
   const needsInstall = isIos() && !isStandalone();
 
   useEffect(() => {
-    currentSubscription()
+    pushSubscription()
       .then((s) => setSubscribed(!!s))
       .catch(() => setSubscribed(false));
   }, []);
@@ -71,10 +65,24 @@ export function NotificationsSection() {
     }
   };
 
+  const test = async () => {
+    setBusy(true);
+    try {
+      let { delivered } = await api.push.test();
+      // The server may not know this device under this account (another account used it before).
+      if (delivered === 0 && (await syncPushSubscription())) ({ delivered } = await api.push.test());
+      toast(x.sent(delivered));
+    } catch (e) {
+      toast((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const disable = async () => {
     setBusy(true);
     try {
-      const sub = await currentSubscription();
+      const sub = await pushSubscription();
       if (sub) {
         await api.push.unsubscribe(sub.endpoint).catch(() => {});
         await sub.unsubscribe();
@@ -96,12 +104,14 @@ export function NotificationsSection() {
             <>
               <span className="chip high">{x.onForDevice}</span>
               <span style={{ flex: 1 }} />
-              <button className="btn" disabled={busy} onClick={async () => toast(x.sent((await api.push.test()).delivered))}>
-                {x.test}
-              </button>
-              <button className="btn" disabled={busy} onClick={disable}>
-                {t.common.turnOff}
-              </button>
+              <div className="row">
+                <button className="btn" disabled={busy} onClick={test}>
+                  {x.test}
+                </button>
+                <button className="btn" disabled={busy} onClick={disable}>
+                  {t.common.turnOff}
+                </button>
+              </div>
             </>
           ) : (
             <button className="btn primary block" disabled={busy || subscribed === null} onClick={enable}>

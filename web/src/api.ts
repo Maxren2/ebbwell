@@ -1,7 +1,7 @@
 import type { PublicKeyCredentialCreationOptionsJSON, PublicKeyCredentialRequestOptionsJSON } from '@simplewebauthn/browser';
 import type { PartnerView, ShareScope } from '../../shared/partner.ts';
 import type { DayData, DayEntry, Settings } from '../../shared/schema.ts';
-import { setDeviceBiometric } from './device.ts';
+import { pushSubscription, setDeviceBiometric } from './device.ts';
 
 export interface Me {
   name: string;
@@ -131,15 +131,31 @@ async function request<T>(method: string, url: string, body?: unknown, opts: { k
 }
 
 /** Leaves the app after the session has ended (signed-out page or the identity provider's logout). */
-export function leaveApp(redirect: string) {
+export async function leaveApp(redirect: string) {
   setDeviceBiometric(false); // the next person on this device must not get the biometric button
+  // Nor this account's reminders. The server drops the dead endpoint at its next send.
+  await (await pushSubscription().catch(() => null))?.unsubscribe().catch(() => {});
   location.replace(redirect);
 }
 
 /** Ends the session on the server, then leaves the app. */
 export async function signOut() {
+  const sub = await pushSubscription().catch(() => null);
+  if (sub) await api.push.unsubscribe(sub.endpoint).catch(() => {});
   const { redirect } = await api.logout();
-  leaveApp(redirect);
+  await leaveApp(redirect);
+}
+
+/**
+ * Registers this browser's push subscription for the signed-in account. Subscriptions are keyed
+ * by endpoint, so this also takes over a device that another account used before.
+ */
+export async function syncPushSubscription(): Promise<boolean> {
+  if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return false;
+  const sub = await pushSubscription();
+  if (!sub) return false;
+  await api.push.subscribe(sub.toJSON());
+  return true;
 }
 
 export const api = {

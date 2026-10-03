@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { analyze, type Analysis } from '../../shared/engine.ts';
 import { localToday } from '../../shared/dates.ts';
 import { isEmptyDay, type DayData, type Settings } from '../../shared/schema.ts';
-import { ApiError, LOCKED_EVENT, api, type Me } from './api.ts';
+import { ApiError, LOCKED_EVENT, api, syncPushSubscription, type Me } from './api.ts';
 import { deviceLanguage, useI18n } from './i18n.tsx';
 
 interface Store {
@@ -84,6 +84,7 @@ export function StoreProvider(props: {
       setLocked(false);
       setError(null);
       void refreshLock().catch(() => {});
+      void syncPushSubscription().catch(() => {});
       setPreference(m.settings.language);
       // Reminders are written on the server in this device's time zone and language.
       const tz = deviceTimeZone();
