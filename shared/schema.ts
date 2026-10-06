@@ -125,6 +125,8 @@ export const SettingsSchema = z
     nfpAcknowledged: z.boolean().default(false),
     /** Cycle start dates excluded from statistics (after the pill, postpartum, illness…). */
     excludedCycles: z.array(isoDate).max(1000).default([]),
+    /** Cycle start dates of first cycles after hormonal contraception (Sensiplan waits one extra day). */
+    afterHormonalContraception: z.array(isoDate).max(1000).default([]),
     defaultCycleLength: z.number().int().min(18).max(60).default(28),
     defaultPeriodLength: z.number().int().min(1).max(12).default(5),
     notifications: NotificationSettingsSchema.prefault({}),

@@ -232,7 +232,7 @@ export const fr: Messages = {
     disturbedQuestion: 'Quelque chose a pu la perturber ?',
     disturbances: 'Perturbations',
     exclude: "Exclure de l'évaluation",
-    excludeHint: 'Les mesures perturbées sont ignorées par la règle de température (Sensiplan).',
+    excludeHint: 'Sensiplan ne met une mesure de côté que si elle est plus haute que les précédentes et qu’une perturbation est notée. Sinon, elle compte quand même.',
     measureHint: 'Mesurez dès le réveil, avant de vous lever, à la même heure chaque jour, avec la même méthode.',
     mucus: 'Glaire cervicale',
     sensiplanCategory: 'Catégorie Sensiplan',
@@ -303,6 +303,9 @@ export const fr: Messages = {
     dayN: (n) => `jour ${n}`,
     aria: 'Température et observations de ce cycle',
     coverLine: 'ligne de couverture',
+    afterPill: ' Premier cycle après une contraception hormonale : une mesure haute de plus est attendue.',
+    exclusionIgnored: (days) =>
+      `Comptées malgré l’exclusion : ${days}. Sensiplan ne met de côté que les mesures plus hautes que les précédentes et dont une perturbation est notée.`,
     rows: { day: 'Jour', bleeding: 'Sang', mucus: 'Glaire', tests: 'Tests' },
   },
 
@@ -356,6 +359,8 @@ export const fr: Messages = {
     ovulationDay: (day, method) => ` · ovulation jour ${day} (${method})`,
     lutealShort: (n) => ` · lutéale ${n} j`,
     exclude: 'Exclure',
+    afterPill: 'Après la pilule',
+    afterPillHint: 'Premier cycle après l’arrêt d’une contraception hormonale : l’évaluation de la température attend un jour de plus (Sensiplan).',
   },
 
   settings: {

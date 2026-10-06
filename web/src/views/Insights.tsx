@@ -15,13 +15,13 @@ export function Insights() {
   const cycles = [...analysis.cycles].reverse();
   const maxLen = Math.max(35, ...cycles.map((c) => c.length ?? diffDays(c.start, today) + 1));
 
-  const toggleExclude = async (start: string, exclude: boolean) => {
+  const toggle = async (key: 'excludedCycles' | 'afterHormonalContraception', start: string, on: boolean) => {
     setBusy(true);
     try {
-      const set = new Set(settings.excludedCycles);
-      if (exclude) set.add(start);
+      const set = new Set(settings[key]);
+      if (on) set.add(start);
       else set.delete(start);
-      await saveSettings({ excludedCycles: [...set].sort() });
+      await saveSettings({ [key]: [...set].sort() });
     } catch (e) {
       toast(t.common.couldNotSave((e as Error).message));
     } finally {
@@ -103,12 +103,23 @@ export function Insights() {
                     {c.ovulation && c.ovulationDay !== null && x.ovulationDay(c.ovulationDay, t.methodShort[c.ovulation.method])}
                     {c.lutealLength !== null && x.lutealShort(c.lutealLength)}
                   </span>
-                  {c.end && (
-                    <label className="row" style={{ whiteSpace: 'nowrap' }}>
-                      <input type="checkbox" disabled={busy} checked={c.excluded} onChange={(e) => toggleExclude(c.start, e.target.checked)} />
-                      {x.exclude}
+                  <span className="row">
+                    <label className="row" style={{ whiteSpace: 'nowrap' }} title={x.afterPillHint}>
+                      <input
+                        type="checkbox"
+                        disabled={busy}
+                        checked={c.afterHormonalContraception}
+                        onChange={(e) => toggle('afterHormonalContraception', c.start, e.target.checked)}
+                      />
+                      {x.afterPill}
                     </label>
-                  )}
+                    {c.end && (
+                      <label className="row" style={{ whiteSpace: 'nowrap' }}>
+                        <input type="checkbox" disabled={busy} checked={c.excluded} onChange={(e) => toggle('excludedCycles', c.start, e.target.checked)} />
+                        {x.exclude}
+                      </label>
+                    )}
+                  </span>
                 </div>
               </div>
             );

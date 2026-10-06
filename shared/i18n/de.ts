@@ -234,7 +234,7 @@ export const de: Messages = {
     disturbedQuestion: 'Gab es mögliche Störfaktoren?',
     disturbances: 'Störfaktoren',
     exclude: 'Von der Auswertung ausklammern',
-    excludeHint: 'Gestörte Messwerte werden von der Temperaturregel (Sensiplan) übersprungen.',
+    excludeHint: 'Sensiplan klammert einen Messwert nur aus, wenn er höher als die vorherigen ist und eine Störung notiert ist. Sonst zählt er trotzdem.',
     measureHint: 'Direkt nach dem Aufwachen messen, vor dem Aufstehen, jeden Tag zur gleichen Zeit und auf dieselbe Art.',
     mucus: 'Zervixschleim',
     sensiplanCategory: 'Sensiplan-Kategorie',
@@ -305,6 +305,9 @@ export const de: Messages = {
     dayN: (n) => `Tag ${n}`,
     aria: 'Temperatur und Beobachtungen in diesem Zyklus',
     coverLine: 'Hilfslinie',
+    afterPill: ' Erster Zyklus nach hormoneller Verhütung: Es wird ein weiterer höherer Messwert abgewartet.',
+    exclusionIgnored: (days) =>
+      `Trotz Ausklammern gewertet: ${days}. Sensiplan klammert nur Messwerte aus, die höher als die vorherigen sind und eine notierte Störung haben.`,
     rows: { day: 'Tag', bleeding: 'Blutung', mucus: 'Schleim', tests: 'Tests' },
   },
 
@@ -358,6 +361,8 @@ export const de: Messages = {
     ovulationDay: (day, method) => ` · Eisprung Tag ${day} (${method})`,
     lutealShort: (n) => ` · Lutealphase ${n} T.`,
     exclude: 'Ausschließen',
+    afterPill: 'Nach der Pille',
+    afterPillHint: 'Erster Zyklus nach dem Absetzen hormoneller Verhütung: Die Temperaturauswertung wartet einen Tag länger (Sensiplan).',
   },
 
   settings: {

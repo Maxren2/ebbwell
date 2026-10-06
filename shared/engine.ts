@@ -27,6 +27,9 @@ export const DEFAULT_LUTEAL_SD = 2;
 export const TEMP_SHIFT_MIN = 0.2; // °C, Sensiplan
 const EPS = 1e-9;
 
+/** Sensiplan evaluates readings rounded to 0.05 °C steps (36.42 → 36.40, 36.43 → 36.45, 36.48 → 36.50). */
+export const roundReading = (celsius: number) => Math.round(celsius * 20) / 20;
+
 // ---------------------------------------------------------------- types
 
 /** Sensiplan mucus categories: t (dry) < ∅ (nothing) < f (moist) < S (creamy) < S+ (fertile quality). */
@@ -48,6 +51,8 @@ export interface TemperatureShift {
   rule?: 'regular' | 'exception1' | 'exception2';
   /** Day the rule completed (post-ovulatory evaluation possible from that evening). */
   confirmedOn?: string;
+  /** First cycle after hormonal contraception: one more higher reading was awaited. */
+  extraDay?: boolean;
 }
 
 export interface MucusPeak {
@@ -73,6 +78,10 @@ export interface Cycle {
   length: number | null;
   periodLength: number;
   excluded: boolean;
+  /** Marked as the first cycle after hormonal contraception. */
+  afterHormonalContraception: boolean;
+  /** Readings marked "exclude" that the temperature rule still counts (not disturbed upwards). */
+  ignoredExclusions: string[];
   /** Completed cycle outside plausible bounds; not used for statistics. */
   implausible: boolean;
   intermenstrualBleeding: string[];
@@ -320,6 +329,7 @@ function buildCycle(
   lastDate: string,
   byDate: Map<string, DayData>,
   excluded: Set<string>,
+  afterPill: Set<string>,
 ): Cycle {
   const end = nextStart ? addDays(nextStart, -1) : null;
   const to = end ?? lastDate;
@@ -336,25 +346,44 @@ function buildCycle(
   const intermenstrualBleeding = days.filter((d) => d > addDays(periodLast, 2) && isAnyBleeding(byDate.get(d)));
 
   const readings: { date: string; value: number }[] = [];
+  const ignoredExclusions: string[] = [];
   const mucus = new Map<string, MucusCategory>();
   let firstPositiveLh: string | null = null;
   for (const date of days) {
     const d = byDate.get(date);
     if (!d) continue;
-    if (d.temperature && !d.temperature.exclude) readings.push({ date, value: d.temperature.value });
+    if (d.temperature) {
+      const value = roundReading(d.temperature.value);
+      if (d.temperature.exclude) {
+        // Sensiplan sets aside only readings disturbed upwards by a known cause: higher than the
+        // readings before them, with a disturbance noted. Any other reading still counts.
+        const before = readings.slice(-6).map((r) => r.value);
+        const upwards = before.length > 0 && value > Math.max(...before) + EPS;
+        if (upwards && d.temperature.disturbances?.length) continue;
+        ignoredExclusions.push(date);
+      }
+      readings.push({ date, value });
+    }
     if (d.mucus && !d.mucus.exclude) mucus.set(date, mucusCategory(d.mucus));
     if (d.lh === 'positive' && !firstPositiveLh) firstPositiveLh = date;
   }
 
-  const temperature = evaluateTemperature(readings);
+  const afterHormonalContraception = afterPill.has(start);
+  let temperature = evaluateTemperature(readings);
+  if (afterHormonalContraception && temperature?.status === 'confirmed') temperature = awaitExtraDay(temperature, readings);
   const peaks = findMucusPeaks(mucus, start, to);
   const confirmedTemp = temperature?.status === 'confirmed' ? temperature : null;
 
-  // Relevant peak: the last one not later than the temperature confirmation, else the last one.
-  const mucusPeak =
-    (confirmedTemp ? peaks.filter((p) => p.peak <= confirmedTemp.confirmedOn!).at(-1) : undefined) ??
-    peaks.at(-1) ??
-    null;
+  // Double check: the peak counts once the temperature rule is complete and three lower days have
+  // passed, unless mucus of the peak's quality returns before then (the evaluation restarts at
+  // the new peak). The first peak that holds is the cycle's peak; whichever sign completes later
+  // decides when the infertile phase begins.
+  const doubleCheck = confirmedTemp
+    ? peaks
+        .map((p) => ({ peak: p, from: maxDate(confirmedTemp.confirmedOn!, p.confirmedOn) }))
+        .find(({ peak, from }) => !dateRange(addDays(peak.peak, 1), from).some((d) => (mucus.get(d) ?? -1) >= peak.category))
+    : undefined;
+  const mucusPeak = doubleCheck?.peak ?? peaks.at(-1) ?? null;
 
   let ovulation: Ovulation | null = null;
   if (confirmedTemp) {
@@ -371,10 +400,7 @@ function buildCycle(
   const ovulationDay = ovulation ? diffDays(start, ovulation.date) + 1 : null;
   const luteal = length !== null && ovulation?.confirmed && ovulationDay ? length - ovulationDay : null;
 
-  const postOvulatoryInfertileFrom =
-    confirmedTemp && mucusPeak && mucusPeak.confirmedOn >= addDays(confirmedTemp.firstHigh, -6)
-      ? maxDate(confirmedTemp.confirmedOn!, mucusPeak.confirmedOn)
-      : null;
+  const postOvulatoryInfertileFrom = doubleCheck?.from ?? null;
 
   return {
     start,
@@ -382,6 +408,8 @@ function buildCycle(
     length,
     periodLength,
     excluded: excluded.has(start),
+    afterHormonalContraception,
+    ignoredExclusions,
     implausible: length !== null && (length < MIN_CYCLE_LENGTH || length > MAX_PLAUSIBLE_CYCLE),
     intermenstrualBleeding,
     temperature,
@@ -394,13 +422,32 @@ function buildCycle(
   };
 }
 
-export function buildCycles(entries: DayEntry[], settings: Pick<Settings, 'excludedCycles'>, today: string): Cycle[] {
+/**
+ * First cycle after hormonal contraception: Sensiplan waits for one more reading above the cover
+ * line after the temperature rule is complete. Until it exists (or if it isn't higher), the
+ * shift stays pending.
+ */
+function awaitExtraDay(shift: TemperatureShift, readings: { date: string; value: number }[]): TemperatureShift {
+  const next = readings.find((r) => r.date > shift.confirmedOn!);
+  if (!next || next.value <= shift.coverline + EPS) {
+    const { firstHigh, coverline, lowDates, highDates, bracketed } = shift;
+    return { status: 'pending', firstHigh, coverline, lowDates, highDates, bracketed };
+  }
+  return { ...shift, highDates: [...shift.highDates, next.date], confirmedOn: next.date, extraDay: true };
+}
+
+export function buildCycles(
+  entries: DayEntry[],
+  settings: Pick<Settings, 'excludedCycles'> & Partial<Pick<Settings, 'afterHormonalContraception'>>,
+  today: string,
+): Cycle[] {
   const byDate = new Map(entries.map((e) => [e.date, e.data]));
   const dates = [...byDate.keys()].sort();
   const starts = findPeriodStarts(byDate, dates);
   const excluded = new Set(settings.excludedCycles);
+  const afterPill = new Set(settings.afterHormonalContraception ?? []);
   const lastDate = maxDate(dates.at(-1) ?? today, today);
-  return starts.map((s, i) => buildCycle(s, starts[i + 1] ?? null, lastDate, byDate, excluded));
+  return starts.map((s, i) => buildCycle(s, starts[i + 1] ?? null, lastDate, byDate, excluded, afterPill));
 }
 
 // ---------------------------------------------------------------- statistics
@@ -622,7 +669,9 @@ export function nfpStatus(cycles: Cycle[], settings: Settings, today: string, en
 
   // Pre-ovulatory: 5-day rule / minus-8 rule.
   const previous = cycles.at(-2);
-  const tempCycles = cycles.slice(0, -1).filter((c) => c.temperature?.status === 'confirmed' && !c.excluded);
+  // Every evaluated cycle counts for minus-8, including those excluded from the statistics: the
+  // earliest first higher reading ever observed is the safe one.
+  const tempCycles = cycles.slice(0, -1).filter((c) => c.temperature?.status === 'confirmed');
   if (!previous || previous.temperature?.status !== 'confirmed') {
     return { kind: 'fertile', reason: 'no-shift-previous-cycle' };
   }

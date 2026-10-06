@@ -93,11 +93,44 @@ describe('Sensiplan temperature rule', () => {
       { date: '2026-03-01', data: { bleeding: { value: 'heavy' } } },
       ...[36.4, 36.45, 36.5, 36.4, 36.35, 36.45, 37.2, 36.6, 36.65, 36.7].map((value, i) => ({
         date: addDays('2026-03-02', i),
-        data: { temperature: { value, exclude: i === 6 } } as DayData,
+        data: { temperature: { value, ...(i === 6 && { exclude: true, disturbances: ['alcohol'] }) } } as DayData,
       })),
     ];
     const [cycle] = buildCycles(entries, settings(), '2026-03-12');
     expect(cycle!.temperature).toMatchObject({ status: 'confirmed', rule: 'regular', coverline: 36.5, firstHigh: '2026-03-09' });
+    expect(cycle!.ignoredExclusions).toEqual([]);
+  });
+
+  const cycleOf = (temps: (number | NonNullable<DayData['temperature']>)[]) => {
+    const entries: DayEntry[] = [
+      { date: '2026-03-01', data: { bleeding: { value: 'heavy' } } },
+      ...temps.map((t, i) => ({ date: addDays('2026-03-02', i), data: { temperature: typeof t === 'number' ? { value: t } : t } as DayData })),
+    ];
+    return buildCycles(entries, settings(), addDays('2026-03-02', temps.length))[0]!;
+  };
+
+  it('rounds readings to 0.05 °C before comparing (Sensiplan)', () => {
+    // 36.44 → 36.45 cover line; 36.63 → 36.65 is exactly 0.2 above (raw it would be 0.19).
+    const c = cycleOf([36.4, 36.44, 36.35, 36.4, 36.3, 36.4, 36.55, 36.6, 36.63]);
+    expect(c.temperature).toMatchObject({ status: 'confirmed', rule: 'regular', coverline: 36.45, confirmedOn: '2026-03-10' });
+  });
+
+  it('does not count a reading that only rounds to the cover line as higher', () => {
+    // 36.41 → 36.40 and 36.42 → 36.40: equal, not higher.
+    const c = cycleOf([36.4, 36.41, 36.35, 36.4, 36.3, 36.4, 36.42, 36.6, 36.7, 36.8]);
+    expect(c.temperature).toMatchObject({ status: 'confirmed', firstHigh: '2026-03-09' });
+  });
+
+  it('still counts a reading marked excluded without a disturbance', () => {
+    const c = cycleOf([36.4, 36.45, 36.5, 36.4, 36.35, 36.45, { value: 37.2, exclude: true }, 36.6, 36.65, 36.7]);
+    expect(c.ignoredExclusions).toEqual(['2026-03-08']);
+    expect(c.temperature?.firstHigh).toBe('2026-03-08');
+  });
+
+  it('still counts a disturbed reading that dipped instead of rising (2nd exception applies)', () => {
+    const c = cycleOf([36.4, 36.45, 36.5, 36.4, 36.35, 36.45, 36.6, { value: 36.5, exclude: true, disturbances: ['sleep'] }, 36.65, 36.75]);
+    expect(c.ignoredExclusions).toEqual(['2026-03-09']);
+    expect(c.temperature).toMatchObject({ status: 'confirmed', rule: 'exception2', bracketed: '2026-03-09' });
   });
 });
 
@@ -298,5 +331,58 @@ describe('Sensiplan evaluation', () => {
   it('does not declare post-ovulatory infertility from temperature alone', () => {
     const entries = generate('2026-01-01', [{ length: 28, ovulationDay: 15, temps: true }], { closeLast: false });
     expect(analyze(entries, avoid, '2026-01-25').nfp.kind).toBe('fertile');
+  });
+
+  // Day 1 = 2026-01-01. Low readings until day 12, higher from day 13: rule complete on day 15.
+  const doubleCheckCycle = (mucusByDay: Record<number, MucusCategory>, lastDay: number) => {
+    const sensation = ['dry', 'nothing', 'moist', 'dry', 'wet'] as const;
+    const appearance = ['none', 'none', 'none', 'creamy', 'eggwhite'] as const;
+    const entries: DayEntry[] = [];
+    for (let day = 1; day <= lastDay; day++) {
+      const data: DayData = { temperature: { value: day <= 12 ? 36.4 : 36.7 } };
+      if (day === 1) data.bleeding = { value: 'heavy' };
+      const m = mucusByDay[day];
+      if (m !== undefined) data.mucus = { sensation: sensation[m], appearance: appearance[m] };
+      entries.push({ date: addDays('2026-01-01', day - 1), data });
+    }
+    return buildCycles(entries, settings(), addDays('2026-01-01', lastDay - 1))[0]!;
+  };
+
+  it('restarts the mucus evaluation when the peak quality returns before the double check', () => {
+    // Peak day 8 (3 lower days after it), but S+ again on day 13: new peak, confirmed on day 16.
+    const mucus = { 8: 4, 9: 0, 10: 0, 11: 0, 12: 0, 13: 4, 14: 0, 15: 0, 16: 0 } as const;
+    expect(doubleCheckCycle(mucus, 15).postOvulatoryInfertileFrom).toBeNull();
+    const c = doubleCheckCycle(mucus, 16);
+    expect(c.mucusPeak?.peak).toBe('2026-01-13');
+    expect(c.postOvulatoryInfertileFrom).toBe('2026-01-16');
+  });
+
+  it('keeps the peak when only lower-quality mucus returns', () => {
+    const c = doubleCheckCycle({ 8: 4, 9: 0, 10: 0, 11: 0, 12: 3, 13: 0, 14: 0, 15: 0 }, 15);
+    expect(c.mucusPeak?.peak).toBe('2026-01-08');
+    expect(c.postOvulatoryInfertileFrom).toBe('2026-01-15');
+  });
+
+  it('counts cycles excluded from statistics for minus-8', () => {
+    const entries = generate('2026-01-01', [
+      { length: 24, ovulationDay: 11, temps: true, mucus: true },
+      { length: 28, ovulationDay: 15, temps: true, mucus: true },
+    ]);
+    const start = entries.at(-1)!.date;
+    const a = analyze(entries, { ...avoid, excludedCycles: ['2026-01-01'] }, addDays(start, 1));
+    // Earliest first higher reading on day 12 (in the excluded cycle) → last infertile day 4.
+    expect(a.nfp).toMatchObject({ kind: 'infertile-pre', rule: 'minus-8', lastDay: addDays(start, 3) });
+  });
+
+  it('waits one more higher reading in the first cycle after hormonal contraception', () => {
+    const afterPill = settings({ afterHormonalContraception: ['2026-01-01'] });
+    const pending = buildCycles(generate('2026-01-01', [{ length: 18, ovulationDay: 15, temps: true, mucus: true }], { closeLast: false }), afterPill, '2026-01-18')[0]!;
+    expect(pending.temperature?.status).toBe('pending');
+    expect(pending.postOvulatoryInfertileFrom).toBeNull();
+
+    const [c] = buildCycles(generate('2026-01-01', [{ length: 28, ovulationDay: 15, temps: true, mucus: true }], { closeLast: false }), afterPill, '2026-01-28');
+    expect(c!.afterHormonalContraception).toBe(true);
+    expect(c!.temperature).toMatchObject({ status: 'confirmed', confirmedOn: '2026-01-19', extraDay: true });
+    expect(c!.postOvulatoryInfertileFrom).toBe('2026-01-19');
   });
 });

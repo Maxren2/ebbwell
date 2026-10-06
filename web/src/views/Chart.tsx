@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { addDays, dateRange, diffDays } from '../../../shared/dates.ts';
-import { MUCUS_LABELS, mucusCategory, type Cycle } from '../../../shared/engine.ts';
+import { MUCUS_LABELS, mucusCategory, roundReading, type Cycle } from '../../../shared/engine.ts';
 import { navigate } from '../router.ts';
 import { useStore } from '../store.tsx';
 import { fmtDate, fmtTemp, toDisplayTemp } from '../format.ts';
@@ -75,7 +75,9 @@ function Evaluation({ cycle }: { cycle: Cycle }) {
           : temp.status === 'confirmed'
             ? c.shiftConfirmed(day(temp.confirmedOn!), c.rules[temp.rule!], day(temp.firstHigh), fmtTemp(temp.coverline, unit))
             : c.shiftPending(temp.highDates.length, fmtTemp(temp.coverline, unit))}
+        {cycle.afterHormonalContraception && c.afterPill}
       </div>
+      {cycle.ignoredExclusions.length > 0 && <div>{c.exclusionIgnored(cycle.ignoredExclusions.map((d) => c.dayN(day(d))).join(', '))}</div>}
       <div>
         <strong>{c.mucusPeak}</strong>
         {cycle.mucusPeak
@@ -111,10 +113,15 @@ function CycleChart({ cycle, to }: { cycle: Cycle; to: string }) {
   const n = Math.max(dates.length, 28);
   const width = LEFT + n * COL + 8;
 
+  // Plotted as evaluated: rounded to 0.05 °C, excluded only where the temperature rule accepts it.
+  const ignored = new Set(cycle.ignoredExclusions);
   const readings = dates
-    .map((d, i) => ({ i, d, t: days.get(d)?.temperature }))
-    .filter((r): r is { i: number; d: string; t: NonNullable<typeof r.t> } => !!r.t);
-  const values = readings.map((r) => toDisplayTemp(r.t.value, unit));
+    .map((d, i) => {
+      const t = days.get(d)?.temperature;
+      return t && { i, d, value: toDisplayTemp(roundReading(t.value), unit), excluded: !!t.exclude && !ignored.has(d) };
+    })
+    .filter((r): r is NonNullable<typeof r> => !!r);
+  const values = readings.map((r) => r.value);
   const step = unit === 'F' ? 0.2 : 0.1;
   const minSpan = unit === 'F' ? 1.6 : 0.9;
   let lo = values.length ? Math.min(...values) - step : unit === 'F' ? 97.2 : 36.2;
@@ -132,7 +139,12 @@ function CycleChart({ cycle, to }: { cycle: Cycle; to: string }) {
   const t = cycle.temperature;
   const high = new Set(t?.highDates);
   const low = new Set(t?.lowDates);
-  const valid = readings.filter((r) => !r.t.exclude);
+  // The curve breaks at an excluded reading (Sensiplan): its neighbours are not joined.
+  const segments: (typeof readings)[] = [[]];
+  for (const r of readings) {
+    if (r.excluded) segments.push([]);
+    else segments.at(-1)!.push(r);
+  }
   const peak = cycle.mucusPeak?.peak;
   const rowsTop = TOP + PLOT_H + 10;
   const height = rowsTop + ROW * 4 + 6;
@@ -188,17 +200,22 @@ function CycleChart({ cycle, to }: { cycle: Cycle; to: string }) {
         )}
 
         {/* temperature curve (valid readings only) */}
-        <polyline
-          fill="none"
-          stroke="var(--text)"
-          strokeWidth="1.5"
-          strokeLinejoin="round"
-          points={valid.map((r) => `${x(r.i)},${y(toDisplayTemp(r.t.value, unit))}`).join(' ')}
-        />
+        {segments
+          .filter((s) => s.length > 1)
+          .map((s) => (
+            <polyline
+              key={s[0]!.d}
+              fill="none"
+              stroke="var(--text)"
+              strokeWidth="1.5"
+              strokeLinejoin="round"
+              points={s.map((r) => `${x(r.i)},${y(r.value)}`).join(' ')}
+            />
+          ))}
         {readings.map((r) => {
           const cx = x(r.i);
-          const cy = y(toDisplayTemp(r.t.value, unit));
-          if (r.t.exclude) {
+          const cy = y(r.value);
+          if (r.excluded) {
             return (
               <g key={r.d} stroke="var(--muted)" strokeWidth="1.5">
                 <circle cx={cx} cy={cy} r="4" fill="var(--surface)" />

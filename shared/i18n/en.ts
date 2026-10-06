@@ -233,7 +233,7 @@ export const en = {
     disturbedQuestion: 'Anything that may have disturbed it?',
     disturbances: 'Disturbances',
     exclude: 'Exclude from evaluation',
-    excludeHint: 'Disturbed readings are skipped by the temperature rule (Sensiplan).',
+    excludeHint: 'Sensiplan sets a reading aside only if it is higher than the ones before and a disturbance is noted. Otherwise it still counts.',
     measureHint: 'Measure right after waking, before getting up, at the same time each day, same method.',
     mucus: 'Cervical mucus',
     sensiplanCategory: 'Sensiplan category',
@@ -304,6 +304,9 @@ export const en = {
     dayN: (n: number) => `day ${n}`,
     aria: 'Temperature and observations for this cycle',
     coverLine: 'cover line',
+    afterPill: ' First cycle after hormonal contraception: one more higher reading is awaited.',
+    exclusionIgnored: (days: string) =>
+      `Still counted although marked excluded: ${days}. Sensiplan only sets aside readings that are higher than the ones before and have a disturbance noted.`,
     rows: { day: 'Day', bleeding: 'Bleed', mucus: 'Mucus', tests: 'Tests' },
   },
 
@@ -353,6 +356,8 @@ export const en = {
     ovulationDay: (day: number, method: string) => ` · ovulation day ${day} (${method})`,
     lutealShort: (n: number) => ` · luteal ${n} d`,
     exclude: 'Exclude',
+    afterPill: 'After the pill',
+    afterPillHint: 'First cycle after stopping hormonal contraception: the temperature evaluation waits one extra day (Sensiplan).',
   },
 
   settings: {
