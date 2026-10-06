@@ -52,7 +52,7 @@ docker run -d --name ebbwell -p 8080:8080 -v ebbwell-data:/data \
   -e OIDC_CLIENT_ID=... -e OIDC_CLIENT_SECRET=... \
   -e LOCAL_LOGIN=local-network -e ADMIN_USERNAME=admin -e ADMIN_PASSWORD=... \
   -e DATA_ENCRYPTION_KEY="$(openssl rand -base64 32)" \
-  ghcr.io/maxren2/ebbwell:0.7.2
+  ghcr.io/maxren2/ebbwell:0.7.3
 ```
 
 Keep a copy of `DATA_ENCRYPTION_KEY`: without it the data can't be decrypted.
