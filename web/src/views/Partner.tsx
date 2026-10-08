@@ -75,19 +75,23 @@ function PartnerSummary({ view, today }: { view: PartnerView; today: string }) {
  * button, and ending the share hands back to the caller instead of navigating.
  */
 export function PartnerPage({ id, home = false, onEnded }: { id: string; home?: boolean; onEnded?: () => void }) {
-  const { today } = useStore();
+  const { today, loadedAt } = useStore();
   const t = useT();
   const x = t.partner;
   const toast = useToast();
   const [view, setView] = useState<PartnerView | null>(null);
   const [error, setError] = useState<'ended' | 'failed' | null>(null);
 
+  // Fetched again whenever the app reloads its data (e.g. back in the foreground).
   useEffect(() => {
     api.shares
       .view(id, today)
-      .then(setView)
+      .then((v) => {
+        setView(v);
+        setError(null);
+      })
       .catch((e: unknown) => setError(e instanceof ApiError && e.status === 404 ? 'ended' : 'failed'));
-  }, [id, today]);
+  }, [id, today, loadedAt]);
 
   const days = useMemo(() => new Map(view?.days.map((d) => [d.date, d.data]) ?? []), [view]);
   const input = useMemo(() => (view ? marksInputFromPartner(view) : null), [view]);
@@ -166,7 +170,7 @@ export function PartnerPage({ id, home = false, onEnded }: { id: string; home?: 
 
 /** Home screen of a partner-only account: the shared cycle, or a list when there are several. */
 export function PartnerHome() {
-  const { saveSettings } = useStore();
+  const { saveSettings, loadedAt } = useStore();
   const t = useT();
   const x = t.partnerHome;
   const toast = useToast();
@@ -176,10 +180,13 @@ export function PartnerHome() {
   const load = useCallback(() => {
     api.shares
       .list()
-      .then((r) => setShares(r.asPartner))
+      .then((r) => {
+        setShares(r.asPartner);
+        setFailed(false);
+      })
       .catch(() => setFailed(true));
   }, []);
-  useEffect(load, [load]);
+  useEffect(load, [load, loadedAt]);
 
   if (failed) return <div className="card">{t.partner.loadFailed}</div>;
   if (!shares) return null;
@@ -208,7 +215,7 @@ export function PartnerHome() {
 
 /** Compact cards on Today for cycles shared with the user. */
 export function PartnerCards() {
-  const { today } = useStore();
+  const { today, loadedAt } = useStore();
   const t = useT();
   const x = t.partner;
   const [items, setItems] = useState<{ share: ShareSummary; view: PartnerView | null }[]>([]);
@@ -227,7 +234,7 @@ export function PartnerCards() {
     return () => {
       cancelled = true;
     };
-  }, [today]);
+  }, [today, loadedAt]);
 
   return (
     <>

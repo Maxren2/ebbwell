@@ -86,6 +86,8 @@ export const fr: Messages = {
       travel: 'Voyage / décalage horaire',
       stress: 'Stress',
       medication: 'Médicaments',
+      routine: 'Changement d’habitudes',
+      other: 'Autre',
     },
     sensation: { dry: 'Sèche', nothing: 'Rien ressenti', moist: 'Humide', wet: 'Mouillée / glissante' },
     appearance: { none: 'Rien vu', creamy: 'Crémeuse / collante', eggwhite: 'Transparente / filante' },
@@ -158,6 +160,8 @@ export const fr: Messages = {
         'evaluation-in-progress': 'Évaluation post-ovulatoire incomplète : considérez-vous comme fertile.',
         'no-shift-previous-cycle':
           "Aucune montée de température n'a été confirmée au cycle précédent : la règle des 5 jours ne s'applique pas.",
+        'after-hormonal-contraception':
+          'Premier cycle après une contraception hormonale : aucun jour du début du cycle ne compte comme infertile.',
         'mucus-observed': 'Un signe de glaire a été observé : la phase fertile a commencé.',
         'pre-ovulatory-phase-ended': 'Les jours infertiles pré-ovulatoires sont terminés.',
       },
@@ -232,7 +236,7 @@ export const fr: Messages = {
     disturbedQuestion: 'Quelque chose a pu la perturber ?',
     disturbances: 'Perturbations',
     exclude: "Exclure de l'évaluation",
-    excludeHint: 'Sensiplan ne met une mesure de côté que si elle est plus haute que les précédentes et qu’une perturbation est notée. Sinon, elle compte quand même.',
+    excludeHint: 'Sensiplan met une mesure de côté quand vous la jugez perturbée (en général plus haute que prévu) et que la perturbation est notée. Sans perturbation notée, elle compte quand même.',
     measureHint: 'Mesurez dès le réveil, avant de vous lever, à la même heure chaque jour, avec la même méthode.',
     mucus: 'Glaire cervicale',
     sensiplanCategory: 'Catégorie Sensiplan',
@@ -305,7 +309,7 @@ export const fr: Messages = {
     coverLine: 'ligne de couverture',
     afterPill: ' Premier cycle après une contraception hormonale : une mesure haute de plus est attendue.',
     exclusionIgnored: (days) =>
-      `Comptées malgré l’exclusion : ${days}. Sensiplan ne met de côté que les mesures plus hautes que les précédentes et dont une perturbation est notée.`,
+      `Comptées malgré l’exclusion : ${days}. Notez la perturbation pour mettre une mesure de côté.`,
     rows: { day: 'Jour', bleeding: 'Sang', mucus: 'Glaire', tests: 'Tests' },
   },
 
@@ -360,7 +364,7 @@ export const fr: Messages = {
     lutealShort: (n) => ` · lutéale ${n} j`,
     exclude: 'Exclure',
     afterPill: 'Après la pilule',
-    afterPillHint: 'Premier cycle après l’arrêt d’une contraception hormonale : l’évaluation de la température attend un jour de plus (Sensiplan).',
+    afterPillHint: 'Premier cycle après l’arrêt d’une contraception hormonale : aucun jour infertile en début de cycle, et l’évaluation de la température attend un jour de plus (Sensiplan).',
   },
 
   settings: {

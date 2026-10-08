@@ -139,12 +139,15 @@ function CycleChart({ cycle, to }: { cycle: Cycle; to: string }) {
   const t = cycle.temperature;
   const high = new Set(t?.highDates);
   const low = new Set(t?.lowDates);
-  // The curve breaks at an excluded reading (Sensiplan): its neighbours are not joined.
-  const segments: (typeof readings)[] = [[]];
-  for (const r of readings) {
-    if (r.excluded) segments.push([]);
-    else segments.at(-1)!.push(r);
-  }
+  // The curve breaks at an excluded reading and at a day without one (Sensiplan): its neighbours
+  // are not joined.
+  const segments: (typeof readings)[] = [];
+  readings.forEach((r, k) => {
+    if (r.excluded) return;
+    const prev = readings[k - 1];
+    if (!prev || prev.excluded || prev.i !== r.i - 1) segments.push([]);
+    segments.at(-1)!.push(r);
+  });
   const peak = cycle.mucusPeak?.peak;
   const rowsTop = TOP + PLOT_H + 10;
   const height = rowsTop + ROW * 4 + 6;

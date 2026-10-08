@@ -96,6 +96,8 @@ const LEXICONS: Record<Lang, Lexicon> = {
       travel: ['travel', 'travelling', 'traveling', 'jet lag', 'jetlag'],
       stress: [],
       medication: ['medication', 'medicine', 'painkiller', 'painkillers', 'ibuprofen'],
+      routine: ['change of routine', 'changed routine', 'different routine', 'out of routine'],
+      other: [],
     },
     sex: {
       protected: ['protected sex', 'sex with condom', 'sex with a condom', 'condom'],
@@ -165,6 +167,8 @@ const LEXICONS: Record<Lang, Lexicon> = {
       travel: ['voyage', 'decalage horaire', 'en voyage'],
       stress: [],
       medication: ['medicament', 'medicaments', 'antidouleur', 'ibuprofene'],
+      routine: ['changement d habitudes', 'changement de routine', 'routine differente', 'rythme different'],
+      other: [],
     },
     sex: {
       protected: [
@@ -233,6 +237,8 @@ const LEXICONS: Record<Lang, Lexicon> = {
       travel: ['reise', 'gereist', 'zeitverschiebung', 'jetlag'],
       stress: [],
       medication: ['medikament', 'medikamente', 'schmerzmittel', 'ibuprofen', 'tablette'],
+      routine: ['geanderter tagesablauf', 'anderer tagesablauf', 'andere routine'],
+      other: [],
     },
     sex: {
       protected: ['geschutzter sex', 'geschutzter verkehr', 'mit kondom', 'kondom', 'verhutet'],
@@ -295,6 +301,8 @@ const LEXICONS: Record<Lang, Lexicon> = {
       travel: ['سفر', 'فرق التوقيت'],
       stress: [],
       medication: ['دواء', 'ادويه', 'مسكن'],
+      routine: ['تغير الروتين', 'تغيير الروتين', 'روتين مختلف'],
+      other: [],
     },
     sex: {
       protected: ['جماع محمي', 'علاقه محميه', 'واقي'],

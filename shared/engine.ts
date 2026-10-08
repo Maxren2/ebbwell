@@ -80,7 +80,7 @@ export interface Cycle {
   excluded: boolean;
   /** Marked as the first cycle after hormonal contraception. */
   afterHormonalContraception: boolean;
-  /** Readings marked "exclude" that the temperature rule still counts (not disturbed upwards). */
+  /** Readings marked "exclude" that the temperature rule still counts (no disturbance noted). */
   ignoredExclusions: string[];
   /** Completed cycle outside plausible bounds; not used for statistics. */
   implausible: boolean;
@@ -355,11 +355,9 @@ function buildCycle(
     if (d.temperature) {
       const value = roundReading(d.temperature.value);
       if (d.temperature.exclude) {
-        // Sensiplan sets aside only readings disturbed upwards by a known cause: higher than the
-        // readings before them, with a disturbance noted. Any other reading still counts.
-        const before = readings.slice(-6).map((r) => r.value);
-        const upwards = before.length > 0 && value > Math.max(...before) + EPS;
-        if (upwards && d.temperature.disturbances?.length) continue;
+        // Sensiplan sets aside a reading the user judges disturbed, provided the disturbance is
+        // noted. A reading marked excluded without one still counts.
+        if (d.temperature.disturbances?.length) continue;
         ignoredExclusions.push(date);
       }
       readings.push({ date, value });
@@ -647,6 +645,13 @@ function fertileWindow(ov: Range) {
 
 // ---------------------------------------------------------------- Sensiplan evaluation
 
+/**
+ * Minus-8 needs the exact first higher reading: a confirmed shift, and the day before it measured
+ * and counted (after a gap, the rise may have started on the missing day).
+ */
+const fullyEvaluated = (c: Cycle) =>
+  c.temperature?.status === 'confirmed' && c.temperature.lowDates.at(-1) === addDays(c.temperature.firstHigh, -1);
+
 export function nfpStatus(cycles: Cycle[], settings: Settings, today: string, entries: DayEntry[]): NfpStatus {
   if (settings.goal !== 'avoid' || !settings.nfpAcknowledged) {
     return { kind: 'unavailable', reason: 'not-enabled' };
@@ -667,11 +672,11 @@ export function nfpStatus(cycles: Cycle[], settings: Settings, today: string, en
     return { kind: 'fertile', reason: post ? 'double-check-pending' : 'evaluation-in-progress' };
   }
 
-  // Pre-ovulatory: 5-day rule / minus-8 rule.
+  // Pre-ovulatory: 5-day rule / minus-8 rule. None in the first cycle after hormonal contraception.
+  if (current.afterHormonalContraception) return { kind: 'fertile', reason: 'after-hormonal-contraception' };
   const previous = cycles.at(-2);
-  // Every evaluated cycle counts for minus-8, including those excluded from the statistics: the
-  // earliest first higher reading ever observed is the safe one.
-  const tempCycles = cycles.slice(0, -1).filter((c) => c.temperature?.status === 'confirmed');
+  // Every fully evaluated cycle counts for minus-8, including those excluded from the statistics.
+  const tempCycles = cycles.slice(0, -1).filter(fullyEvaluated);
   if (!previous || previous.temperature?.status !== 'confirmed') {
     return { kind: 'fertile', reason: 'no-shift-previous-cycle' };
   }

@@ -14,6 +14,8 @@ interface Store {
   saveDay: (date: string, data: DayData) => Promise<void>;
   saveSettings: (patch: Partial<Settings>) => Promise<void>;
   reload: () => Promise<void>;
+  /** Bumped on every reload, so views with their own data (shared cycles) fetch it again. */
+  loadedAt: number;
   /** App lock config for this user (null = no lock). */
   lockTimeout: number | null;
   refreshLock: () => Promise<void>;
@@ -54,6 +56,7 @@ export function StoreProvider(props: {
   const [error, setError] = useState<string | null>(null);
   const [locked, setLocked] = useState(false);
   const [lockTimeout, setLockTimeout] = useState<number | null>(null);
+  const [loadedAt, setLoadedAt] = useState(0);
   const today = useToday();
   const { setPreference } = useI18n();
   const lastActivity = useRef(Date.now());
@@ -81,6 +84,7 @@ export function StoreProvider(props: {
       const d = await api.days();
       setMe(m);
       setDays(new Map(d.map((e) => [e.date, e.data])));
+      setLoadedAt(Date.now());
       setLocked(false);
       setError(null);
       void refreshLock().catch(() => {});
@@ -112,18 +116,25 @@ export function StoreProvider(props: {
     };
   }, [reload, lock]);
 
+  // Back in the foreground (PWAs stay open for days): show what changed meanwhile, on this device,
+  // another one or in a shared cycle.
+  useEffect(() => {
+    if (locked) return;
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void reload();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [locked, reload]);
+
   // App lock behaviour: lock when leaving (timeout 0), lock after inactivity, keep the
   // server-side unlock window open while the user is active.
   useEffect(() => {
     if (lockTimeout === null) return;
     const onVisibility = () => {
-      if (document.visibilityState === 'hidden') {
-        if (lockTimeout === 0) {
-          void api.lock.lockNow(true).catch(() => {});
-          lock();
-        }
-      } else if (!locked) {
-        void reload();
+      if (document.visibilityState === 'hidden' && lockTimeout === 0) {
+        void api.lock.lockNow(true).catch(() => {});
+        lock();
       }
     };
     const onActivity = () => {
@@ -149,7 +160,7 @@ export function StoreProvider(props: {
       window.removeEventListener('pointerdown', onActivity);
       window.removeEventListener('keydown', onActivity);
     };
-  }, [lockTimeout, locked, lock, reload]);
+  }, [lockTimeout, locked, lock]);
 
   const saveDay = useCallback(async (date: string, data: DayData) => {
     if (isEmptyDay(data)) await api.deleteDay(date);
@@ -192,7 +203,7 @@ export function StoreProvider(props: {
 
   return (
     <Ctx.Provider
-      value={{ me, settings: me.settings, days, analysis, today, saveDay, saveSettings, reload, lockTimeout, refreshLock }}
+      value={{ me, settings: me.settings, days, analysis, today, saveDay, saveSettings, reload, loadedAt, lockTimeout, refreshLock }}
     >
       {props.children}
     </Ctx.Provider>

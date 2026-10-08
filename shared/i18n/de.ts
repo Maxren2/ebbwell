@@ -86,6 +86,8 @@ export const de: Messages = {
       travel: 'Reise / Zeitverschiebung',
       stress: 'Stress',
       medication: 'Medikamente',
+      routine: 'Geänderter Tagesablauf',
+      other: 'Sonstiges',
     },
     sensation: { dry: 'Trocken', nothing: 'Nichts gespürt', moist: 'Feucht', wet: 'Nass / glitschig' },
     appearance: { none: 'Nichts gesehen', creamy: 'Cremig / klebrig', eggwhite: 'Klar / spinnbar' },
@@ -160,6 +162,8 @@ export const de: Messages = {
         'evaluation-in-progress': 'Die Auswertung nach dem Eisprung ist nicht abgeschlossen: Betrachte dich als fruchtbar.',
         'no-shift-previous-cycle':
           'Im vorigen Zyklus wurde kein Temperaturanstieg bestätigt, daher gilt die 5-Tage-Regel nicht.',
+        'after-hormonal-contraception':
+          'Erster Zyklus nach hormoneller Verhütung: Am Zyklusbeginn gibt es keine unfruchtbaren Tage.',
         'mucus-observed': 'Ein Schleimzeichen wurde beobachtet: Die fruchtbare Phase hat begonnen.',
         'pre-ovulatory-phase-ended': 'Die unfruchtbaren Tage vor dem Eisprung sind vorbei.',
       },
@@ -234,7 +238,7 @@ export const de: Messages = {
     disturbedQuestion: 'Gab es mögliche Störfaktoren?',
     disturbances: 'Störfaktoren',
     exclude: 'Von der Auswertung ausklammern',
-    excludeHint: 'Sensiplan klammert einen Messwert nur aus, wenn er höher als die vorherigen ist und eine Störung notiert ist. Sonst zählt er trotzdem.',
+    excludeHint: 'Sensiplan klammert einen Messwert aus, wenn du ihn für gestört hältst (meist höher als erwartet) und die Störung notiert ist. Ohne notierte Störung zählt er trotzdem.',
     measureHint: 'Direkt nach dem Aufwachen messen, vor dem Aufstehen, jeden Tag zur gleichen Zeit und auf dieselbe Art.',
     mucus: 'Zervixschleim',
     sensiplanCategory: 'Sensiplan-Kategorie',
@@ -307,7 +311,7 @@ export const de: Messages = {
     coverLine: 'Hilfslinie',
     afterPill: ' Erster Zyklus nach hormoneller Verhütung: Es wird ein weiterer höherer Messwert abgewartet.',
     exclusionIgnored: (days) =>
-      `Trotz Ausklammern gewertet: ${days}. Sensiplan klammert nur Messwerte aus, die höher als die vorherigen sind und eine notierte Störung haben.`,
+      `Trotz Ausklammern gewertet: ${days}. Notiere die Störung, um einen Messwert auszuklammern.`,
     rows: { day: 'Tag', bleeding: 'Blutung', mucus: 'Schleim', tests: 'Tests' },
   },
 
@@ -362,7 +366,7 @@ export const de: Messages = {
     lutealShort: (n) => ` · Lutealphase ${n} T.`,
     exclude: 'Ausschließen',
     afterPill: 'Nach der Pille',
-    afterPillHint: 'Erster Zyklus nach dem Absetzen hormoneller Verhütung: Die Temperaturauswertung wartet einen Tag länger (Sensiplan).',
+    afterPillHint: 'Erster Zyklus nach dem Absetzen hormoneller Verhütung: keine unfruchtbaren Tage am Zyklusbeginn, und die Temperaturauswertung wartet einen Tag länger (Sensiplan).',
   },
 
   settings: {

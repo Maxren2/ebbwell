@@ -88,6 +88,8 @@ export const en = {
       travel: 'Travel / time zone',
       stress: 'Stress',
       medication: 'Medication',
+      routine: 'Change of routine',
+      other: 'Other',
     },
     sensation: { dry: 'Dry', nothing: 'Nothing felt', moist: 'Moist', wet: 'Wet / slippery' },
     appearance: { none: 'Nothing seen', creamy: 'Creamy / sticky', eggwhite: 'Clear / stretchy' },
@@ -159,6 +161,7 @@ export const en = {
         'double-check-pending': 'Waiting for both temperature and mucus to confirm.',
         'evaluation-in-progress': 'Post-ovulatory evaluation not complete: consider yourself fertile.',
         'no-shift-previous-cycle': 'No temperature shift was confirmed in the previous cycle, so the 5-day rule does not apply.',
+        'after-hormonal-contraception': 'First cycle after hormonal contraception: no days at the start of the cycle count as infertile.',
         'mucus-observed': 'A mucus sign was observed: the fertile phase has started.',
         'pre-ovulatory-phase-ended': 'The pre-ovulatory infertile days are over.',
       } as Record<string, string>,
@@ -233,7 +236,7 @@ export const en = {
     disturbedQuestion: 'Anything that may have disturbed it?',
     disturbances: 'Disturbances',
     exclude: 'Exclude from evaluation',
-    excludeHint: 'Sensiplan sets a reading aside only if it is higher than the ones before and a disturbance is noted. Otherwise it still counts.',
+    excludeHint: 'Sensiplan sets a reading aside when you judge it disturbed (usually higher than expected) and the disturbance is noted. Without a noted disturbance it still counts.',
     measureHint: 'Measure right after waking, before getting up, at the same time each day, same method.',
     mucus: 'Cervical mucus',
     sensiplanCategory: 'Sensiplan category',
@@ -306,7 +309,7 @@ export const en = {
     coverLine: 'cover line',
     afterPill: ' First cycle after hormonal contraception: one more higher reading is awaited.',
     exclusionIgnored: (days: string) =>
-      `Still counted although marked excluded: ${days}. Sensiplan only sets aside readings that are higher than the ones before and have a disturbance noted.`,
+      `Still counted although marked excluded: ${days}. Note the disturbance to set a reading aside.`,
     rows: { day: 'Day', bleeding: 'Bleed', mucus: 'Mucus', tests: 'Tests' },
   },
 
@@ -357,7 +360,7 @@ export const en = {
     lutealShort: (n: number) => ` · luteal ${n} d`,
     exclude: 'Exclude',
     afterPill: 'After the pill',
-    afterPillHint: 'First cycle after stopping hormonal contraception: the temperature evaluation waits one extra day (Sensiplan).',
+    afterPillHint: 'First cycle after stopping hormonal contraception: no infertile days at its start, and the temperature evaluation waits one extra day (Sensiplan).',
   },
 
   settings: {

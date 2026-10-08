@@ -127,10 +127,16 @@ describe('Sensiplan temperature rule', () => {
     expect(c.temperature?.firstHigh).toBe('2026-03-08');
   });
 
-  it('still counts a disturbed reading that dipped instead of rising (2nd exception applies)', () => {
+  it('sets aside a reading judged disturbed whatever its value, once a disturbance is noted', () => {
     const c = cycleOf([36.4, 36.45, 36.5, 36.4, 36.35, 36.45, 36.6, { value: 36.5, exclude: true, disturbances: ['sleep'] }, 36.65, 36.75]);
-    expect(c.ignoredExclusions).toEqual(['2026-03-09']);
-    expect(c.temperature).toMatchObject({ status: 'confirmed', rule: 'exception2', bracketed: '2026-03-09' });
+    expect(c.ignoredExclusions).toEqual([]);
+    expect(c.temperature).toMatchObject({ status: 'confirmed', rule: 'regular', highDates: ['2026-03-08', '2026-03-10', '2026-03-11'] });
+  });
+
+  it('sets aside a disturbed reading however few readings come before it', () => {
+    const c = cycleOf([{ value: 37.0, exclude: true, disturbances: ['time'] }, 36.4, 36.45, 36.5, 36.4, 36.35, 36.45, 36.6, 36.65, 36.7]);
+    expect(c.ignoredExclusions).toEqual([]);
+    expect(c.temperature).toMatchObject({ status: 'confirmed', coverline: 36.5, lowDates: ['2026-03-03', '2026-03-04', '2026-03-05', '2026-03-06', '2026-03-07', '2026-03-08'] });
   });
 });
 
@@ -372,6 +378,23 @@ describe('Sensiplan evaluation', () => {
     const a = analyze(entries, { ...avoid, excludedCycles: ['2026-01-01'] }, addDays(start, 1));
     // Earliest first higher reading on day 12 (in the excluded cycle) → last infertile day 4.
     expect(a.nfp).toMatchObject({ kind: 'infertile-pre', rule: 'minus-8', lastDay: addDays(start, 3) });
+  });
+
+  it('leaves out of minus-8 a cycle whose first higher reading follows a missing day', () => {
+    const entries = generate('2026-01-01', [
+      { length: 24, ovulationDay: 11, temps: true, mucus: true },
+      { length: 28, ovulationDay: 15, temps: true, mucus: true },
+    ]);
+    // No reading on day 11: the rise seen on day 12 may have started the day before.
+    delete entries.find((e) => e.date === '2026-01-11')!.data.temperature;
+    const start = entries.at(-1)!.date;
+    expect(analyze(entries, avoid, addDays(start, 1)).nfp).toMatchObject({ kind: 'infertile-pre', rule: '5-day', lastDay: addDays(start, 4) });
+  });
+
+  it('has no infertile days at the start of the first cycle after hormonal contraception', () => {
+    const entries = generate('2026-01-01', [{ length: 28, ovulationDay: 15, temps: true, mucus: true }]);
+    const a = analyze(entries, { ...avoid, afterHormonalContraception: ['2026-01-29'] }, '2026-01-31');
+    expect(a.nfp).toMatchObject({ kind: 'fertile', reason: 'after-hormonal-contraception' });
   });
 
   it('waits one more higher reading in the first cycle after hormonal contraception', () => {

@@ -3,7 +3,7 @@ import { isIsoDate } from './dates.ts';
 import { LANGUAGES } from './i18n/index.ts';
 
 export const BLEEDING = ['spotting', 'light', 'medium', 'heavy'] as const;
-export const DISTURBANCES = ['sleep', 'time', 'alcohol', 'illness', 'travel', 'stress', 'medication'] as const;
+export const DISTURBANCES = ['sleep', 'time', 'alcohol', 'illness', 'travel', 'stress', 'medication', 'routine', 'other'] as const;
 export const MUCUS_SENSATION = ['dry', 'nothing', 'moist', 'wet'] as const;
 export const MUCUS_APPEARANCE = ['none', 'creamy', 'eggwhite'] as const;
 export const SYMPTOMS = [
