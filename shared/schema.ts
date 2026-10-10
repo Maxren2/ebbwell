@@ -21,6 +21,8 @@ export const DayDataSchema = z
         value: z.enum(BLEEDING),
         /** Bleeding that should not count as a period (e.g. breakthrough bleeding). */
         exclude: z.boolean().optional(),
+        /** The user marked this day as the first day of a period (overrides the automatic detection). */
+        firstDay: z.boolean().optional(),
       })
       .strict()
       .optional(),
@@ -105,6 +107,12 @@ export const SettingsSchema = z
     goal: z.enum(['track', 'conceive', 'avoid']).default('track'),
     /** Pregnancy / postpartum / pause: no predictions. */
     paused: z.boolean().default(false),
+    /** Hormonal contraception in use: bleeding and symptoms are recorded, nothing is predicted or evaluated. */
+    hormonalContraception: z.boolean().default(false),
+    /** Dates hormonal contraception was stopped: the cycle running then and the next one follow the rules after hormones. */
+    hormonesStopped: z.array(isoDate).max(100).default([]),
+    /** Dates a pause (pregnancy, long break) ended: the cycle count for the minus-8 rule starts again. */
+    historyRestarts: z.array(isoDate).max(100).default([]),
     temperatureUnit: z.enum(['C', 'F']).default('C'),
     /** Interface language; "auto" follows the device. */
     language: z.enum(['auto', ...LANGUAGES]).default('auto'),
@@ -125,7 +133,7 @@ export const SettingsSchema = z
     nfpAcknowledged: z.boolean().default(false),
     /** Cycle start dates excluded from statistics (after the pill, postpartum, illness…). */
     excludedCycles: z.array(isoDate).max(1000).default([]),
-    /** Cycle start dates of first cycles after hormonal contraception (Sensiplan waits one extra day). */
+    /** Cycle start dates the user marked as first cycles after hormonal contraception. */
     afterHormonalContraception: z.array(isoDate).max(1000).default([]),
     defaultCycleLength: z.number().int().min(18).max(60).default(28),
     defaultPeriodLength: z.number().int().min(1).max(12).default(5),

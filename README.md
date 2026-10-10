@@ -30,9 +30,9 @@ Calendar-only period apps predict the ovulation day correctly only about 8–21%
 | Daily log | Bleeding, basal temperature (time, disturbances, exclusion), cervical mucus (Sensiplan categories), cervix, LH and pregnancy tests, sex, symptoms, mood, notes |
 | Quick entry | Type or say one sentence ("36.52 at 6:45, light bleeding, cramps, tired") and the day's form fills in. Understood in English, French, German and Arabic; the text is read in the browser and never sent anywhere |
 | Voice input | Per device: the keyboard's dictation, or Whisper running on the phone itself (downloaded once from your server, about 79 MB). Audio never leaves the device |
-| Insights | Cycle and period length, variation, luteal phase, per-cycle ovulation method, exclude unusual cycles, pregnancy/pause mode |
-| Predictions | Next 3 periods, fertile window, ovulation with ranges and confidence; late-period detection with a pregnancy-test hint |
-| Sensiplan evaluation | Opt-in for people who learned the method: 5-day / minus-8 rules, post-ovulatory double check |
+| Insights | Cycle and period length, variation, luteal phase, per-cycle ovulation method, exclude unusual cycles, pregnancy/pause mode, hormonal-contraception mode (log only, nothing predicted) |
+| Predictions | Next 3 periods, fertile window, ovulation with ranges and confidence; late-period detection with a pregnancy-test hint. The fertile-window forecast is hidden while the Sensiplan evaluation is on and in the first cycles after hormonal contraception |
+| Sensiplan evaluation | Opt-in for people who learned the method: 5-day / minus-8 rules capped by the shortest cycle, post-ovulatory double check, bleeding outside the period as a fertile sign, stricter rules after hormonal contraception or a pause |
 | Reminders | Web Push: morning temperature, evening check-in, period coming, fertile window, partner's period. Discreet wording by default |
 | App lock | Server-enforced PIN, Face ID / Touch ID / fingerprint (WebAuthn), auto-lock, lockout after 5 wrong PINs, PIN reset only after a fresh identity-provider login |
 | Partner sharing | Single-use invite link; read-only view with owner-chosen scopes (fertility, history, symptoms & mood). Notes and intimate details are never shared. Partners can use a follow-only mode without tracking anything themselves |

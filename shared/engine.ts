@@ -17,6 +17,8 @@ import type { DayData, DayEntry, Settings } from './schema.ts';
 export const MIN_BLEEDING_GAP = 7;
 /** Bleeding sooner than this after a period start is intermenstrual bleeding. */
 export const MIN_CYCLE_LENGTH = 15;
+/** A bleed that would make the cycle before it shorter than this is only a doubtful period start. */
+export const SHORT_CYCLE = 21;
 /** Cycles longer than this are kept but not used for statistics. */
 export const MAX_PLAUSIBLE_CYCLE = 90;
 /** How many recent usable cycles feed the statistics. */
@@ -60,6 +62,8 @@ export interface MucusPeak {
   category: MucusCategory;
   /** Third day of lower quality after the peak. */
   confirmedOn: string;
+  /** The "peak" is the last day of bleeding outside the period, which is evaluated like fertile mucus. */
+  bleeding?: boolean;
 }
 
 export type OvulationMethod = 'temperature+mucus' | 'temperature' | 'mucus' | 'lh';
@@ -78,13 +82,24 @@ export interface Cycle {
   length: number | null;
   periodLength: number;
   excluded: boolean;
-  /** Marked as the first cycle after hormonal contraception. */
+  /** Hormonal contraception ended during or just before this cycle: no infertile days at its start. */
   afterHormonalContraception: boolean;
+  /** First cycle that started after hormonal contraception: statistics and the minus-8 count start here. */
+  firstAfterHormones: boolean;
+  /** A pause (pregnancy, long break) ended during or just before this cycle: no infertile days at its start. */
+  afterPause: boolean;
+  /** One more higher reading is awaited: after hormonal contraception, until the first confirmed rise. */
+  extraReading: boolean;
+  /** The start is doubtful (single light day, very short cycle before, more bleeding soon after) and not confirmed. */
+  startUncertain: boolean;
   /** Readings marked "exclude" that the temperature rule still counts (no disturbance noted). */
   ignoredExclusions: string[];
   /** Completed cycle outside plausible bounds; not used for statistics. */
   implausible: boolean;
+  /** Bleeding outside the period, spotting included: evaluated like fertile mucus. */
   intermenstrualBleeding: string[];
+  /** Days without a mucus observation that keep the double check from completing. */
+  mucusGaps: string[];
   temperature: TemperatureShift | null;
   mucusPeak: MucusPeak | null;
   firstPositiveLh: string | null;
@@ -139,7 +154,7 @@ export interface PredictedCycle {
 
 export type NfpStatus =
   | { kind: 'unavailable'; reason: string }
-  | { kind: 'infertile-pre'; rule: '5-day' | 'minus-8'; lastDay: string }
+  | { kind: 'infertile-pre'; rule: '5-day' | 'minus-8' | 'shortest-cycle'; lastDay: string }
   | { kind: 'fertile'; reason: string }
   | { kind: 'infertile-post'; since: string; fromEvening: boolean };
 
@@ -147,7 +162,8 @@ export interface CurrentStatus {
   cycleStart: string;
   cycleDay: number;
   inPeriod: boolean;
-  phase: 'period' | 'follicular' | 'fertile' | 'peak-fertile' | 'luteal' | 'late';
+  /** "cycle": between periods, when the calendar-based fertility forecast is not shown. */
+  phase: 'period' | 'follicular' | 'fertile' | 'peak-fertile' | 'luteal' | 'late' | 'cycle';
   daysLate: number;
   /** A temperature shift is being watched but not complete yet. */
   temperaturePending: TemperatureShift | null;
@@ -165,6 +181,12 @@ export interface Analysis {
   current: CurrentStatus | null;
   /** Current cycle (index 0) followed by upcoming cycles. */
   predictions: PredictedCycle[];
+  /**
+   * Why the calendar-based ovulation and fertile-window estimate must not be shown: the Sensiplan
+   * evaluation is on (forecasts are not for contraception), or the first cycles after hormonal
+   * contraception are not settled yet. Null: it may be shown.
+   */
+  forecastHidden: 'sensiplan' | 'after-hormones' | null;
   nfp: NfpStatus;
   warnings: string[];
 }
@@ -208,16 +230,21 @@ function range(date: string, spread: number): Range {
 
 // ---------------------------------------------------------------- cycles
 
-/** Period start dates, oldest first. */
+/**
+ * Period start dates, oldest first. Which bleeding is the first day of a period is the user's
+ * judgement: a day she marked as such always starts a cycle, the rest is a best guess.
+ */
 export function findPeriodStarts(byDate: Map<string, DayData>, dates: string[]): string[] {
   const starts: string[] = [];
   let lastBleeding: string | null = null;
   for (const date of dates) {
-    if (!isPeriodBleeding(byDate.get(date))) continue;
+    const bleeding = byDate.get(date)?.bleeding;
+    const marked = !!bleeding?.firstDay && !bleeding.exclude;
+    if (!marked && !isPeriodBleeding(byDate.get(date))) continue;
     const gapOk = lastBleeding === null || diffDays(lastBleeding, date) > MIN_BLEEDING_GAP;
     const lastStart = starts[starts.length - 1];
     const lengthOk = lastStart === undefined || diffDays(lastStart, date) >= MIN_CYCLE_LENGTH;
-    if (gapOk && lengthOk) starts.push(date);
+    if (marked || (gapOk && lengthOk)) starts.push(date);
     lastBleeding = date;
   }
   return starts;
@@ -323,14 +350,16 @@ export function findMucusPeaks(obs: Map<string, MucusCategory>, from: string, to
   return peaks;
 }
 
-function buildCycle(
-  start: string,
-  nextStart: string | null,
-  lastDate: string,
-  byDate: Map<string, DayData>,
-  excluded: Set<string>,
-  afterPill: Set<string>,
-): Cycle {
+interface CycleContext {
+  previousStart: string | null;
+  excluded: boolean;
+  afterHormonalContraception: boolean;
+  firstAfterHormones: boolean;
+  afterPause: boolean;
+  extraReading: boolean;
+}
+
+function buildCycle(start: string, nextStart: string | null, lastDate: string, byDate: Map<string, DayData>, context: CycleContext): Cycle {
   const end = nextStart ? addDays(nextStart, -1) : null;
   const to = end ?? lastDate;
   const days = dateRange(start, maxDate(start, to));
@@ -343,7 +372,17 @@ function buildCycle(
     if (isAnyBleeding(byDate.get(date))) periodLast = date;
   }
   const periodLength = diffDays(start, periodLast) + 1;
-  const intermenstrualBleeding = days.filter((d) => d > addDays(periodLast, 2) && isAnyBleeding(byDate.get(d)));
+  // Any bleeding outside the period, also when marked "not part of a period".
+  const intermenstrualBleeding = days.filter((d) => d > addDays(periodLast, 2) && !!byDate.get(d)?.bleeding);
+  const bleeds = new Set(intermenstrualBleeding);
+
+  // The start is the user's call. Doubtful cases are flagged until she confirms the first day.
+  const first = byDate.get(start)?.bleeding;
+  const startUncertain =
+    !first?.firstDay &&
+    ((first?.value === 'light' && periodLength === 1 && diffDays(start, lastDate) >= 2) ||
+      (context.previousStart !== null && diffDays(context.previousStart, start) < SHORT_CYCLE) ||
+      intermenstrualBleeding.some((d) => diffDays(start, d) <= 10 && isPeriodBleeding(byDate.get(d))));
 
   const readings: { date: string; value: number }[] = [];
   const ignoredExclusions: string[] = [];
@@ -366,30 +405,48 @@ function buildCycle(
     if (d.lh === 'positive' && !firstPositiveLh) firstPositiveLh = date;
   }
 
-  const afterHormonalContraception = afterPill.has(start);
   let temperature = evaluateTemperature(readings);
-  if (afterHormonalContraception && temperature?.status === 'confirmed') temperature = awaitExtraDay(temperature, readings);
-  const peaks = findMucusPeaks(mucus, start, to);
+  if (context.extraReading && temperature?.status === 'confirmed') temperature = awaitExtraDay(temperature, readings);
   const confirmedTemp = temperature?.status === 'confirmed' ? temperature : null;
 
-  // Double check: the peak counts once the temperature rule is complete and three lower days have
-  // passed, unless mucus of the peak's quality returns before then (the evaluation restarts at
-  // the new peak). The first peak that holds is the cycle's peak; whichever sign completes later
-  // decides when the infertile phase begins.
-  const doubleCheck = confirmedTemp
-    ? peaks
-        .map((p) => ({ peak: p, from: maxDate(confirmedTemp.confirmedOn!, p.confirmedOn) }))
-        .find(({ peak, from }) => !dateRange(addDays(peak.peak, 1), from).some((d) => (mucus.get(d) ?? -1) >= peak.category))
-    : undefined;
-  const mucusPeak = doubleCheck?.peak ?? peaks.at(-1) ?? null;
+  // Bleeding outside the period may be ovulation bleeding and hides the mucus, so it is evaluated
+  // like fertile mucus: its last day is a peak too, confirmed by three dry days after it.
+  const mucusPeaks = findMucusPeaks(mucus, start, to);
+  const bleedingPeaks: MucusPeak[] = intermenstrualBleeding
+    .filter((d) => [1, 2, 3].every((k) => !bleeds.has(addDays(d, k)) && (mucus.get(addDays(d, k)) ?? 9) < 2))
+    .map((d) => ({ peak: d, category: 4 as const, confirmedOn: addDays(d, 3), bleeding: true }));
+  const peaks = [...mucusPeaks, ...bleedingPeaks].sort((a, b) => (a.peak < b.peak ? -1 : 1));
+
+  // Double check: a peak counts once the temperature rule is complete and three lower days have
+  // passed. Until then every day needs an observation, and neither mucus of the peak's quality
+  // nor bleeding may return (the evaluation restarts at the next peak). After a bleeding peak any
+  // fertile mucus restarts it. The first peak that holds is the cycle's peak; whichever sign
+  // completes later decides when the infertile phase begins.
+  let doubleCheck: { peak: MucusPeak; from: string } | undefined;
+  let mucusGaps: string[] = [];
+  for (const peak of confirmedTemp ? peaks : []) {
+    const from = maxDate(confirmedTemp!.confirmedOn!, peak.confirmedOn);
+    const range = dateRange(addDays(peak.peak, 1), from);
+    const limit = peak.bleeding ? 2 : peak.category;
+    if (range.some((d) => bleeds.has(d) || (mucus.get(d) ?? -1) >= limit)) continue;
+    const gaps = range.filter((d) => !mucus.has(d));
+    if (gaps.length) {
+      if (!mucusGaps.length) mucusGaps = gaps;
+      continue;
+    }
+    doubleCheck = { peak, from };
+    break;
+  }
+  if (doubleCheck) mucusGaps = [];
+  const mucusPeak = doubleCheck?.peak ?? mucusPeaks.at(-1) ?? null;
 
   let ovulation: Ovulation | null = null;
   if (confirmedTemp) {
     const date = addDays(confirmedTemp.firstHigh, -1);
     const peakNear = mucusPeak && Math.abs(diffDays(mucusPeak.peak, date)) <= 3;
     ovulation = { date, method: peakNear ? 'temperature+mucus' : 'temperature', confirmed: true };
-  } else if (mucusPeak) {
-    ovulation = { date: mucusPeak.peak, method: 'mucus', confirmed: false };
+  } else if (mucusPeaks.length) {
+    ovulation = { date: mucusPeaks.at(-1)!.peak, method: 'mucus', confirmed: false };
   } else if (firstPositiveLh) {
     ovulation = { date: addDays(firstPositiveLh, 1), method: 'lh', confirmed: false };
   }
@@ -405,11 +462,16 @@ function buildCycle(
     end,
     length,
     periodLength,
-    excluded: excluded.has(start),
-    afterHormonalContraception,
+    excluded: context.excluded,
+    afterHormonalContraception: context.afterHormonalContraception,
+    firstAfterHormones: context.firstAfterHormones,
+    afterPause: context.afterPause,
+    extraReading: context.extraReading,
+    startUncertain,
     ignoredExclusions,
     implausible: length !== null && (length < MIN_CYCLE_LENGTH || length > MAX_PLAUSIBLE_CYCLE),
     intermenstrualBleeding,
+    mucusGaps,
     temperature,
     mucusPeak,
     firstPositiveLh,
@@ -421,9 +483,9 @@ function buildCycle(
 }
 
 /**
- * First cycle after hormonal contraception: Sensiplan waits for one more reading above the cover
- * line after the temperature rule is complete. Until it exists (or if it isn't higher), the
- * shift stays pending.
+ * After hormonal contraception, until the first confirmed rise: Sensiplan waits for one more
+ * reading above the cover line after the temperature rule is complete. Until it exists (or if it
+ * isn't higher), the shift stays pending.
  */
 function awaitExtraDay(shift: TemperatureShift, readings: { date: string; value: number }[]): TemperatureShift {
   const next = readings.find((r) => r.date > shift.confirmedOn!);
@@ -436,21 +498,58 @@ function awaitExtraDay(shift: TemperatureShift, readings: { date: string; value:
 
 export function buildCycles(
   entries: DayEntry[],
-  settings: Pick<Settings, 'excludedCycles'> & Partial<Pick<Settings, 'afterHormonalContraception'>>,
+  settings: Pick<Settings, 'excludedCycles'> & Partial<Pick<Settings, 'afterHormonalContraception' | 'hormonesStopped' | 'historyRestarts'>>,
   today: string,
 ): Cycle[] {
   const byDate = new Map(entries.map((e) => [e.date, e.data]));
   const dates = [...byDate.keys()].sort();
   const starts = findPeriodStarts(byDate, dates);
   const excluded = new Set(settings.excludedCycles);
-  const afterPill = new Set(settings.afterHormonalContraception ?? []);
   const lastDate = maxDate(dates.at(-1) ?? today, today);
-  return starts.map((s, i) => buildCycle(s, starts[i + 1] ?? null, lastDate, byDate, excluded, afterPill));
+
+  // An interruption that ended on a date concerns the cycle running then and the next one to start.
+  const concerned = (ended: string[]) => {
+    const running = new Set<number>();
+    const first = new Set<number>();
+    for (const date of ended) {
+      const k = starts.findLastIndex((s) => s <= date);
+      if (k >= 0 && starts[k] !== date) running.add(k);
+      first.add(k >= 0 && starts[k] === date ? k : k + 1);
+    }
+    return { running, first };
+  };
+  const hormones = concerned(settings.hormonesStopped ?? []);
+  for (const s of settings.afterHormonalContraception ?? []) if (starts.includes(s)) hormones.first.add(starts.indexOf(s));
+  const pauses = concerned(settings.historyRestarts ?? []);
+
+  const cycles: Cycle[] = [];
+  let awaitingRise = false;
+  starts.forEach((s, i) => {
+    const afterHormonalContraception = hormones.first.has(i) || hormones.running.has(i);
+    if (afterHormonalContraception) awaitingRise = true;
+    const cycle = buildCycle(s, starts[i + 1] ?? null, lastDate, byDate, {
+      previousStart: starts[i - 1] ?? null,
+      excluded: excluded.has(s),
+      afterHormonalContraception,
+      firstAfterHormones: hormones.first.has(i),
+      afterPause: pauses.first.has(i) || pauses.running.has(i),
+      extraReading: awaitingRise,
+    });
+    if (cycle.temperature?.status === 'confirmed') awaitingRise = false;
+    cycles.push(cycle);
+  });
+  return cycles;
+}
+
+/** Cycles since hormonal contraception ended: what came before says nothing about the natural cycle. */
+function sinceHormones(cycles: Cycle[]): Cycle[] {
+  return cycles.slice(Math.max(0, cycles.findLastIndex((c) => c.firstAfterHormones)));
 }
 
 // ---------------------------------------------------------------- statistics
 
-export function computeStats(cycles: Cycle[]): Stats {
+export function computeStats(all: Cycle[]): Stats {
+  const cycles = sinceHormones(all);
   const usable = cycles.filter((c) => c.length !== null && !c.excluded && !c.implausible).slice(-STATS_WINDOW);
   const lengths = usable.map((c) => c.length!);
   const lutealAll = cycles
@@ -489,7 +588,7 @@ export function computeStats(cycles: Cycle[]): Stats {
 
 /** Cycle length used for predictions: trimmed mean once there is enough history. */
 function predictionLength(cycles: Cycle[], fallback: number): number {
-  const lengths = cycles
+  const lengths = sinceHormones(cycles)
     .filter((c) => c.length !== null && !c.excluded && !c.implausible)
     .slice(-STATS_WINDOW)
     .map((c) => c.length!);
@@ -510,12 +609,33 @@ function confidenceOf(stats: Stats): Confidence {
 
 // ---------------------------------------------------------------- predictions & status
 
+/** The cycle as logged, without any evaluation of its signs. */
+const unevaluated = (c: Cycle): Cycle => ({
+  ...c,
+  temperature: null,
+  mucusPeak: null,
+  mucusGaps: [],
+  ovulation: null,
+  ovulationDay: null,
+  lutealLength: null,
+  postOvulatoryInfertileFrom: null,
+});
+
 export function analyze(entries: DayEntry[], settings: Settings, today: string): Analysis {
   const cycles = buildCycles(entries, settings, today);
   const stats = computeStats(cycles);
   const warnings: string[] = [];
   const basis = stats.count > 0 ? 'personal' : 'defaults';
-  const confidence = confidenceOf(stats);
+  const current = cycles.at(-1);
+  const nfp = nfpStatus(cycles, settings, today, entries);
+
+  // Nothing is predicted or judged while paused or under hormonal contraception: the bleeding
+  // pattern then says nothing about a natural cycle.
+  if (settings.paused || settings.hormonalContraception) {
+    // Under hormonal contraception the signs are not evaluated either: only the log is shown.
+    const shown = settings.hormonalContraception ? cycles.map(unevaluated) : cycles;
+    return { cycles: shown, stats, basis, confidence: 'low', current: null, predictions: [], forecastHidden: null, nfp, warnings };
+  }
 
   if (stats.count < 3) warnings.push('few-cycles');
   if (stats.regularity === 'irregular') warnings.push('irregular');
@@ -523,11 +643,17 @@ export function analyze(entries: DayEntry[], settings: Settings, today: string):
   if (stats.frequency === 'infrequent') warnings.push('infrequent');
   if (cycles.some((c) => c.implausible && !c.excluded)) warnings.push('implausible-cycle');
 
-  const current = cycles.at(-1);
-  const nfp = nfpStatus(cycles, settings, today, entries);
+  // After hormonal contraception the signs and cycle lengths are not dependable until three
+  // cycles have passed and the cycles are regular (FSRH guidance).
+  const hormonal = cycles.findLast((c) => c.afterHormonalContraception);
+  const unsettled = !!hormonal && (!hormonal.firstAfterHormones || stats.count < 3 || stats.regularity === 'irregular');
+  const confidence = unsettled ? 'low' : confidenceOf(stats);
+  // Calendar forecasts of the fertile days are not for contraception: they give way to the
+  // Sensiplan evaluation, and to caution in the first cycles after hormones unless conceiving.
+  const forecastHidden = nfp.kind !== 'unavailable' ? 'sensiplan' : unsettled && settings.goal !== 'conceive' ? 'after-hormones' : null;
 
-  if (!current || settings.paused || today < current.start) {
-    return { cycles, stats, basis, confidence, current: null, predictions: [], nfp, warnings };
+  if (!current || today < current.start) {
+    return { cycles, stats, basis, confidence, current: null, predictions: [], forecastHidden, nfp, warnings };
   }
 
   const cycleLen = predictionLength(cycles, settings.defaultCycleLength);
@@ -588,7 +714,8 @@ export function analyze(entries: DayEntry[], settings: Settings, today: string):
     const spread = Math.round(cycleSpread * Math.sqrt(k + 1));
     const start = k === 0 ? base : range(addDays(base.date, Math.round(cycleLen * k)), spread);
     const ovSpread = Math.round(Math.sqrt(spread ** 2 + lutealSpread ** 2));
-    const ov = range(addDays(start.date, Math.round(cycleLen - luteal) - 1), ovSpread);
+    // Same rounding as for the current cycle, so the expected ovulation day does not jump by one.
+    const ov = range(addDays(start.date, Math.round(cycleLen) - Math.round(luteal) - 1), ovSpread);
     const minOv = addDays(start.date, periodLen);
     if (ov.earliest < minOv) ov.earliest = minOv;
     predictions.push({ start, ovulation: ov, ...fertileWindow(ov), periodEnd: addDays(start.date, periodLen - 1) });
@@ -605,6 +732,8 @@ export function analyze(entries: DayEntry[], settings: Settings, today: string):
   else if (today >= cur.fertileStart && today <= cur.fertileEnd) phase = 'fertile';
   else if (today > cur.fertileEnd) phase = 'luteal';
   else phase = 'follicular';
+  // Without the forecast only what the signs confirmed is named.
+  if (forecastHidden && phase !== 'late' && phase !== 'period' && !(phase === 'luteal' && confirmedOv)) phase = 'cycle';
 
   const unprotectedInWindow = dateRange(cur.fertileStart, cur.fertileEnd).some((d) => byDate.get(d)?.sex === 'unprotected');
   const positivePregnancyTest =
@@ -629,6 +758,7 @@ export function analyze(entries: DayEntry[], settings: Settings, today: string):
       positivePregnancyTest,
     },
     predictions,
+    forecastHidden,
     nfp,
     warnings,
   };
@@ -659,6 +789,8 @@ export function nfpStatus(cycles: Cycle[], settings: Settings, today: string, en
   if (!settings.track.temperature || !settings.track.mucus) {
     return { kind: 'unavailable', reason: 'needs-temperature-and-mucus' };
   }
+  // Hormones change temperature and mucus: the rules cannot be applied.
+  if (settings.hormonalContraception) return { kind: 'unavailable', reason: 'hormonal-contraception' };
   const current = cycles.at(-1);
   if (!current || today < current.start) return { kind: 'unavailable', reason: 'no-cycle' };
   if (settings.paused) return { kind: 'unavailable', reason: 'paused' };
@@ -672,38 +804,52 @@ export function nfpStatus(cycles: Cycle[], settings: Settings, today: string, en
     return { kind: 'fertile', reason: post ? 'double-check-pending' : 'evaluation-in-progress' };
   }
 
-  // Pre-ovulatory: 5-day rule / minus-8 rule. None in the first cycle after hormonal contraception.
+  // Pre-ovulatory infertile days. None right after hormonal contraception or a pause, and none
+  // while the first day of the period is in doubt.
   if (current.afterHormonalContraception) return { kind: 'fertile', reason: 'after-hormonal-contraception' };
-  const previous = cycles.at(-2);
-  // Every fully evaluated cycle counts for minus-8, including those excluded from the statistics.
-  const tempCycles = cycles.slice(0, -1).filter(fullyEvaluated);
-  if (!previous || previous.temperature?.status !== 'confirmed') {
+  if (current.afterPause) return { kind: 'fertile', reason: 'after-pause' };
+  if (current.startUncertain) return { kind: 'fertile', reason: 'cycle-start-unconfirmed' };
+  const earlier = cycles.slice(0, -1);
+  if (earlier.at(-1)?.temperature?.status !== 'confirmed') {
     return { kind: 'fertile', reason: 'no-shift-previous-cycle' };
   }
-  const earliestFirstHigh = Math.min(...tempCycles.map((c) => diffDays(c.start, c.temperature!.firstHigh) + 1));
-  const minus8 = earliestFirstHigh - 8;
-  let lastInfertileDay: number;
-  let rule: '5-day' | 'minus-8';
-  if (tempCycles.length >= 12) {
-    lastInfertileDay = minus8;
-    rule = 'minus-8';
-  } else if (minus8 < 5) {
-    lastInfertileDay = minus8;
-    rule = 'minus-8';
-  } else {
-    lastInfertileDay = 5;
-    rule = '5-day';
+
+  // Minus-8 takes the earliest first higher reading ever evaluated, including cycles excluded from
+  // the statistics. It may only add days once 12 cycles are evaluated, and that count starts again
+  // after a pause and after hormonal contraception (where the first three cycles are left out).
+  let countFrom = 0;
+  earlier.forEach((c, i) => {
+    if (c.firstAfterHormones) countFrom = i + 3;
+    else if (c.afterPause) countFrom = Math.max(countFrom, i);
+  });
+  const evaluated = earlier.map((c, i) => ({ c, i })).filter(({ c }) => fullyEvaluated(c));
+  const minus8 = Math.min(...evaluated.map(({ c }) => diffDays(c.start, c.temperature!.firstHigh) + 1)) - 8;
+  const counted = evaluated.filter(({ i }) => i >= countFrom).length;
+  let lastInfertileDay = counted >= 12 ? minus8 : Math.min(5, minus8);
+  let rule: '5-day' | 'minus-8' | 'shortest-cycle' = counted >= 12 || minus8 < 5 ? 'minus-8' : '5-day';
+
+  // Calendar rule (FSRH): the first fertile day is the shortest of the last 12 cycles minus 20.
+  // Five infertile days assume no cycle shorter than 26 days.
+  const lengths = earlier.filter((c) => c.length !== null && !c.implausible).slice(-12).map((c) => c.length!);
+  const calendar = lengths.length ? Math.min(...lengths) - 21 : Infinity;
+  if (calendar < lastInfertileDay) {
+    lastInfertileDay = calendar;
+    rule = 'shortest-cycle';
   }
 
-  // Any mucus sensation/sign (f or better) or cervix change ends the infertile phase.
+  // Any mucus sensation/sign (f or better), cervix change or bleeding outside the period ends the
+  // infertile phase.
   const byDate = new Map(entries.map((e) => [e.date, e.data]));
+  const bleeds = new Set(current.intermenstrualBleeding);
   const sign = dateRange(current.start, today).find((d) => {
     const data = byDate.get(d);
-    return (data?.mucus && !data.mucus.exclude && mucusCategory(data.mucus) >= 2) ||
+    return bleeds.has(d) ||
+      (data?.mucus && !data.mucus.exclude && mucusCategory(data.mucus) >= 2) ||
       (data?.cervix && (data.cervix.opening === 'medium' || data.cervix.opening === 'open' || data.cervix.firmness === 'soft'));
   });
   let lastDay = addDays(current.start, lastInfertileDay - 1);
   if (sign && sign <= lastDay) lastDay = addDays(sign, -1);
   if (lastInfertileDay >= 1 && today <= lastDay) return { kind: 'infertile-pre', rule, lastDay };
-  return { kind: 'fertile', reason: sign ? 'mucus-observed' : 'pre-ovulatory-phase-ended' };
+  if (sign) return { kind: 'fertile', reason: bleeds.has(sign) ? 'bleeding-observed' : 'mucus-observed' };
+  return { kind: 'fertile', reason: rule === 'shortest-cycle' && lastInfertileDay < 1 ? 'short-cycles' : 'pre-ovulatory-phase-ended' };
 }

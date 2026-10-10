@@ -119,12 +119,25 @@ export function DayEditor({ date }: { date: string }) {
             labels={L.bleeding}
             onChange={(v) => set('bleeding', v ? { ...draft.bleeding, value: v } : undefined)}
           />
+          {draft.bleeding && !draft.bleeding.exclude && (
+            <label className="check">
+              <input
+                type="checkbox"
+                checked={!!draft.bleeding.firstDay}
+                onChange={(e) => set('bleeding', { ...draft.bleeding!, firstDay: e.target.checked || undefined })}
+              />
+              <span>
+                {tx.firstDay}
+                <div className="hint">{tx.firstDayHint}</div>
+              </span>
+            </label>
+          )}
           {draft.bleeding && (
             <label className="check">
               <input
                 type="checkbox"
                 checked={!!draft.bleeding.exclude}
-                onChange={(e) => set('bleeding', { ...draft.bleeding!, exclude: e.target.checked || undefined })}
+                onChange={(e) => set('bleeding', { value: draft.bleeding!.value, ...(e.target.checked ? { exclude: true } : { firstDay: draft.bleeding!.firstDay }) })}
               />
               <span>
                 {tx.notPeriod}

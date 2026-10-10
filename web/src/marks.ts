@@ -22,11 +22,17 @@ export interface MarkInput {
   }[];
 }
 
-export const marksInputFromAnalysis = (a: Analysis): MarkInput => ({
-  pastOvulations: a.cycles.slice(0, -1).flatMap((c) => (c.ovulation ? [c.ovulation] : [])),
-  currentOvulationConfirmed: !!a.cycles.at(-1)?.ovulation?.confirmed,
-  predictions: a.predictions,
-});
+export const marksInputFromAnalysis = (a: Analysis): MarkInput => {
+  const confirmed = !!a.cycles.at(-1)?.ovulation?.confirmed;
+  return {
+    pastOvulations: a.cycles.slice(0, -1).flatMap((c) => (c.ovulation ? [c.ovulation] : [])),
+    currentOvulationConfirmed: confirmed,
+    // Without the fertility forecast only the periods and an ovulation the signs confirmed are painted.
+    predictions: a.forecastHidden
+      ? a.predictions.map((p, i) => ({ start: p.start, periodEnd: p.periodEnd, ...(i === 0 && confirmed && { ovulation: p.ovulation }) }))
+      : a.predictions,
+  };
+};
 
 export const marksInputFromPartner = (v: PartnerView): MarkInput => ({
   pastOvulations: v.pastOvulations,

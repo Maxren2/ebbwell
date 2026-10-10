@@ -12,6 +12,7 @@ export function Today() {
   const { analysis, today, days, me, settings } = useStore();
   const t = useT();
   const current = analysis.current;
+  const cycle = analysis.cycles.at(-1);
 
   return (
     <>
@@ -26,6 +27,11 @@ export function Today() {
         <PartnerCards />
         {analysis.cycles.length === 0 ? (
           <Welcome />
+        ) : settings.hormonalContraception ? (
+          <div className="card">
+            <h2>{t.today.hormonalTitle}</h2>
+            <p className="muted">{t.today.hormonalBody}</p>
+          </div>
         ) : settings.paused ? (
           <div className="card">
             <h2>{t.today.pausedTitle}</h2>
@@ -33,6 +39,7 @@ export function Today() {
           </div>
         ) : current ? (
           <>
+            {cycle?.startUncertain && <StartCheck start={cycle.start} days={cycle.periodLength} />}
             <Ring analysis={analysis} today={today} />
             <Alerts analysis={analysis} />
             {settings.goal === 'avoid' && <NfpCard status={analysis.nfp} />}
@@ -42,7 +49,7 @@ export function Today() {
 
         <TodayLog />
 
-        {analysis.cycles.length > 0 && !days.has(today) && !current?.inPeriod && <PeriodStartButton />}
+        {analysis.cycles.length > 0 && !settings.hormonalContraception && !days.has(today) && !current?.inPeriod && <PeriodStartButton />}
 
         {analysis.warnings
           .filter((w) => t.warnings[w])
@@ -56,6 +63,49 @@ export function Today() {
         <p className="hint center">{t.today.disclaimer}</p>
       </div>
     </>
+  );
+}
+
+// ------------------------------------------------------------------ doubtful period start
+
+/** Which bleeding starts a period is the user's call: asks when the detected start looks doubtful. */
+function StartCheck({ start, days: length }: { start: string; days: number }) {
+  const { days, saveDay } = useStore();
+  const t = useT();
+  const x = t.today.startCheck;
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+
+  const answer = async (isPeriod: boolean) => {
+    setBusy(true);
+    try {
+      for (let k = 0; k < (isPeriod ? 1 : length); k++) {
+        const date = addDays(start, k);
+        const d = days.get(date);
+        if (!d?.bleeding) continue;
+        const bleeding = isPeriod ? { ...d.bleeding, firstDay: true } : { value: d.bleeding.value, exclude: true };
+        await saveDay(date, { ...d, bleeding });
+      }
+    } catch (e) {
+      toast(t.common.couldNotSave((e as Error).message));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="card tone-warn stack">
+      <h2>{x.title(fmtLong(start))}</h2>
+      <p className="small">{x.body}</p>
+      <div className="grid-2">
+        <button className="btn" disabled={busy} onClick={() => answer(true)}>
+          {x.yes}
+        </button>
+        <button className="btn" disabled={busy} onClick={() => answer(false)}>
+          {x.no}
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -92,9 +142,12 @@ function Ring({ analysis, today }: { analysis: Analysis; today: string }) {
   const pos = at(idx(today));
   const ov = at(idx(cur.ovulation.date));
   const confirmed = analysis.cycles.at(-1)?.ovulation?.confirmed;
+  // Without the forecast only what was logged or confirmed by the signs is drawn.
+  const forecast = !analysis.forecastHidden;
 
   const phase = {
     period: { label: tr.phase.period, color: 'var(--period)' },
+    cycle: { label: tr.phase.cycle, color: 'var(--text)' },
     follicular: { label: tr.phase.follicular, color: 'var(--text)' },
     fertile: { label: tr.phase.fertile, color: 'var(--fertile)' },
     'peak-fertile': { label: tr.phase.peakFertile, color: 'var(--fertile)' },
@@ -106,10 +159,12 @@ function Ring({ analysis, today }: { analysis: Analysis; today: string }) {
     <div className="hero" role="img" aria-label={tr.ringLabel(current.cycleDay, phase.label)}>
       <svg viewBox="0 0 100 100" aria-hidden="true">
         {arc(0, length, 'var(--surface-2)')}
-        {arc(idx(cur.fertileStart), idx(cur.fertileEnd) + 1, 'var(--fertile-soft)')}
-        {arc(idx(cur.peakFertileStart), idx(cur.peakFertileEnd) + 1, 'var(--fertile)')}
+        {forecast && arc(idx(cur.fertileStart), idx(cur.fertileEnd) + 1, 'var(--fertile-soft)')}
+        {forecast && arc(idx(cur.peakFertileStart), idx(cur.peakFertileEnd) + 1, 'var(--fertile)')}
         {arc(0, idx(cur.periodEnd) + 1, 'var(--period)')}
-        <circle cx={ov.x} cy={ov.y} r="3.2" fill="var(--surface)" stroke="var(--ovulation)" strokeWidth="1.6" strokeDasharray={confirmed ? undefined : '1.5 1.2'} />
+        {(forecast || confirmed) && (
+          <circle cx={ov.x} cy={ov.y} r="3.2" fill="var(--surface)" stroke="var(--ovulation)" strokeWidth="1.6" strokeDasharray={confirmed ? undefined : '1.5 1.2'} />
+        )}
         <circle cx={pos.x} cy={pos.y} r="5" fill="var(--surface)" stroke="var(--text)" strokeWidth="2" />
       </svg>
       <div className="inner">
@@ -153,6 +208,12 @@ function NextCards({ analysis, today }: { analysis: Analysis; today: string }) {
             <div className="value">{fmtDate(cycle.ovulation.date)}</div>
             <div className="label">{t.method[cycle.ovulation.method]}</div>
           </div>
+        ) : analysis.forecastHidden ? (
+          <div className="stat">
+            <div className="value" style={{ fontSize: '1.05rem' }}>
+              {t.today.notEstimated}
+            </div>
+          </div>
         ) : (
           <div className="stat">
             <div className="value">{ovPast ? t.today.likelyPassed : fmtDate(cur.ovulation.date)}</div>
@@ -162,7 +223,9 @@ function NextCards({ analysis, today }: { analysis: Analysis; today: string }) {
             </div>
           </div>
         )}
-        <p className="small muted">{t.today.fertile(fmtDate(cur.fertileStart), fmtDate(cur.fertileEnd))}</p>
+        <p className="small muted">
+          {analysis.forecastHidden ? t.today.noForecast[analysis.forecastHidden] : t.today.fertile(fmtDate(cur.fertileStart), fmtDate(cur.fertileEnd))}
+        </p>
       </div>
     </div>
   );
@@ -280,7 +343,7 @@ function PeriodStartButton() {
       onClick={async () => {
         setBusy(true);
         try {
-          await saveDay(today, { ...days.get(today), bleeding: { value: 'medium' } });
+          await saveDay(today, { ...days.get(today), bleeding: { value: 'medium', firstDay: true } });
           toast(t.today.periodLogged);
         } catch (e) {
           toast(t.common.couldNotSave((e as Error).message));
@@ -326,7 +389,7 @@ function Welcome() {
           setBusy(true);
           try {
             if (length >= 18 && length <= 60) await saveSettings({ defaultCycleLength: Math.round(length) });
-            await saveDay(date, { bleeding: { value: 'medium' } });
+            await saveDay(date, { bleeding: { value: 'medium', firstDay: true } });
             toast(w.saved);
           } catch (e) {
             toast(t.common.couldNotSave((e as Error).message));

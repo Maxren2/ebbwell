@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { addDays } from '../shared/dates.ts';
+import { addDays, diffDays } from '../shared/dates.ts';
+import { buildPartnerView } from '../shared/partner.ts';
 import {
   analyze,
   buildCycles,
@@ -322,9 +323,21 @@ describe('Sensiplan evaluation', () => {
   });
 
   it('uses minus-8 when a first higher reading was early', () => {
-    const entries = generate('2026-01-01', [{ length: 24, ovulationDay: 11, temps: true, mucus: true }]);
+    const entries = generate('2026-01-01', [{ length: 28, ovulationDay: 11, temps: true, mucus: true }]);
     // First higher reading on day 12 → minus-8 = day 4.
-    expect(analyze(entries, avoid, '2026-01-26').nfp).toMatchObject({ kind: 'infertile-pre', rule: 'minus-8', lastDay: '2026-01-28' });
+    expect(analyze(entries, avoid, '2026-01-30').nfp).toMatchObject({ kind: 'infertile-pre', rule: 'minus-8', lastDay: '2026-02-01' });
+  });
+
+  it('caps the infertile days at the shortest cycle minus 21 (calendar rule)', () => {
+    // 24-day cycle, first higher reading on day 13: minus-8 would allow 5 days, the calendar rule 3.
+    const entries = generate('2026-01-01', [{ length: 24, ovulationDay: 12, temps: true, mucus: true }]);
+    const start = entries.at(-1)!.date;
+    expect(analyze(entries, avoid, addDays(start, 1)).nfp).toMatchObject({ kind: 'infertile-pre', rule: 'shortest-cycle', lastDay: addDays(start, 2) });
+    expect(analyze(entries, avoid, addDays(start, 3)).nfp.kind).toBe('fertile');
+
+    // 21-day cycle: no infertile days at the start at all.
+    const short = generate('2026-01-01', [{ length: 21, ovulationDay: 9, temps: true, mucus: true }]);
+    expect(analyze(short, avoid, short.at(-1)!.date).nfp).toMatchObject({ kind: 'fertile', reason: 'short-cycles' });
   });
 
   it('declares post-ovulatory infertility only after the double check', () => {
@@ -371,7 +384,7 @@ describe('Sensiplan evaluation', () => {
 
   it('counts cycles excluded from statistics for minus-8', () => {
     const entries = generate('2026-01-01', [
-      { length: 24, ovulationDay: 11, temps: true, mucus: true },
+      { length: 28, ovulationDay: 11, temps: true, mucus: true },
       { length: 28, ovulationDay: 15, temps: true, mucus: true },
     ]);
     const start = entries.at(-1)!.date;
@@ -382,7 +395,7 @@ describe('Sensiplan evaluation', () => {
 
   it('leaves out of minus-8 a cycle whose first higher reading follows a missing day', () => {
     const entries = generate('2026-01-01', [
-      { length: 24, ovulationDay: 11, temps: true, mucus: true },
+      { length: 28, ovulationDay: 11, temps: true, mucus: true },
       { length: 28, ovulationDay: 15, temps: true, mucus: true },
     ]);
     // No reading on day 11: the rise seen on day 12 may have started the day before.
@@ -407,5 +420,165 @@ describe('Sensiplan evaluation', () => {
     expect(c!.afterHormonalContraception).toBe(true);
     expect(c!.temperature).toMatchObject({ status: 'confirmed', confirmedOn: '2026-01-19', extraDay: true });
     expect(c!.postOvulatoryInfertileFrom).toBe('2026-01-19');
+  });
+
+  it('keeps asking for the extra reading until the first confirmed rise after hormonal contraception', () => {
+    const entries = generate('2026-01-01', [
+      { length: 30 }, // no temperature rise in the first cycle
+      { length: 28, ovulationDay: 15, temps: true, mucus: true },
+      { length: 28, ovulationDay: 15, temps: true, mucus: true },
+    ]);
+    const cycles = buildCycles(entries, settings({ afterHormonalContraception: ['2026-01-01'] }), entries.at(-1)!.date);
+    expect(cycles.map((c) => c.extraReading)).toEqual([true, true, false, false]);
+    expect(cycles[1]!.temperature).toMatchObject({ status: 'confirmed', extraDay: true, confirmedOn: addDays(cycles[1]!.start, 18) });
+    expect(cycles[2]!.temperature).toMatchObject({ status: 'confirmed', confirmedOn: addDays(cycles[2]!.start, 17) });
+  });
+
+  it('applies the rules after hormones to the cycle running when they stopped and to the next one', () => {
+    const entries = generate('2026-01-01', [{ length: 28 }, { length: 28 }]);
+    const cycles = buildCycles(entries, settings({ hormonesStopped: ['2026-01-10'] }), entries.at(-1)!.date);
+    expect(cycles.map((c) => [c.afterHormonalContraception, c.firstAfterHormones])).toEqual([[true, false], [true, true], [false, false]]);
+  });
+
+  it('starts the minus-8 count again after hormonal contraception, leaving out the first three cycles', () => {
+    // 13 cycles of 38 days, first higher reading on day 25: minus-8 and the calendar rule give day 17.
+    const entries = generate('2025-01-01', Array.from({ length: 13 }, () => ({ length: 38, ovulationDay: 24, temps: true, mucus: true })));
+    const start = entries.at(-1)!.date;
+    expect(analyze(entries, avoid, addDays(start, 9)).nfp).toMatchObject({ kind: 'infertile-pre', rule: 'minus-8', lastDay: addDays(start, 16) });
+
+    // Hormones stopped before the 6th cycle: only cycles 9–13 count, so the 5-day rule applies.
+    const after = { ...avoid, afterHormonalContraception: [addDays('2025-01-01', 38 * 5)] };
+    expect(analyze(entries, after, addDays(start, 4)).nfp).toMatchObject({ kind: 'infertile-pre', rule: '5-day', lastDay: addDays(start, 4) });
+    expect(analyze(entries, after, addDays(start, 9)).nfp.kind).toBe('fertile');
+  });
+
+  it('has no infertile days at the start of the first cycle after a pause', () => {
+    const entries = generate('2026-01-01', [{ length: 28, ovulationDay: 15, temps: true, mucus: true }]);
+    const a = analyze(entries, { ...avoid, historyRestarts: ['2026-01-20'] }, '2026-01-31');
+    expect(a.nfp).toMatchObject({ kind: 'fertile', reason: 'after-pause' });
+  });
+
+  it('evaluates bleeding outside the period like fertile mucus', () => {
+    // Peak on day 8, temperature rule complete on day 15, spotting on day 14.
+    const entries = (lastDay: number): DayEntry[] =>
+      Array.from({ length: lastDay }, (_, i) => {
+        const day = i + 1;
+        const data: DayData = {
+          temperature: { value: day <= 12 ? 36.4 : 36.7 },
+          mucus: day === 8 ? { sensation: 'wet', appearance: 'eggwhite' } : { sensation: 'dry', appearance: 'none' },
+        };
+        if (day === 1) data.bleeding = { value: 'heavy' };
+        if (day === 14) data.bleeding = { value: 'spotting' };
+        return { date: addDays('2026-01-01', i), data };
+      });
+    const cycleAt = (lastDay: number) => buildCycles(entries(lastDay), settings(), addDays('2026-01-01', lastDay - 1))[0]!;
+    // Three dry days after the bleeding are needed: days 15, 16 and 17.
+    expect(cycleAt(16).postOvulatoryInfertileFrom).toBeNull();
+    const c = cycleAt(17);
+    expect(c.mucusPeak).toMatchObject({ peak: '2026-01-14', bleeding: true });
+    expect(c.postOvulatoryInfertileFrom).toBe('2026-01-17');
+  });
+
+  it('ends the pre-ovulatory phase at bleeding outside the period', () => {
+    const entries = generate('2026-01-01', [{ length: 28, ovulationDay: 15, temps: true, mucus: true }]);
+    // Spotting on cycle day 4, three days after a one-day period.
+    entries.push({ date: '2026-02-01', data: { bleeding: { value: 'spotting' } } });
+    expect(analyze(entries.slice(0, -1), avoid, '2026-02-01').nfp).toMatchObject({ kind: 'infertile-pre', rule: '5-day', lastDay: '2026-02-02' });
+    expect(analyze(entries, avoid, '2026-02-01').nfp).toMatchObject({ kind: 'fertile', reason: 'bleeding-observed' });
+  });
+
+  it('needs a mucus observation on every day until the temperature rule is complete', () => {
+    // Peak day 8, temperature rule complete on day 15, nothing noted on day 12.
+    const c = doubleCheckCycle({ 8: 4, 9: 0, 10: 0, 11: 0, 13: 0, 14: 0, 15: 0 }, 15);
+    expect(c.postOvulatoryInfertileFrom).toBeNull();
+    expect(c.mucusGaps).toEqual(['2026-01-12']);
+  });
+
+  it('lets the user mark the first day of a period', () => {
+    const entries = generate('2026-01-01', [{ length: 28 }]);
+    entries.push({ date: '2026-01-27', data: { bleeding: { value: 'spotting', firstDay: true } } });
+    expect(buildCycles(entries, settings(), '2026-01-30').map((c) => c.start)).toEqual(['2026-01-01', '2026-01-27']);
+  });
+
+  it('gives no infertile days while the first day of the period is in doubt', () => {
+    // A single light bleed on day 22, the real period a week later.
+    const entries = generate('2026-01-01', [{ length: 28, ovulationDay: 15, temps: true, mucus: true }]);
+    const light = entries.find((e) => e.date === '2026-01-22')!;
+    light.data.bleeding = { value: 'light' };
+    const doubtful = analyze(entries, avoid, '2026-01-30');
+    expect(doubtful.cycles.at(-1)).toMatchObject({ start: '2026-01-22', startUncertain: true });
+    expect(doubtful.nfp).toMatchObject({ kind: 'fertile', reason: 'cycle-start-unconfirmed' });
+
+    // "No, it was not a period": the real period starts the cycle, the bleed stays a fertile sign.
+    light.data.bleeding = { value: 'light', exclude: true };
+    const fixed = analyze(entries, avoid, '2026-01-30');
+    expect(fixed.cycles.map((c) => [c.start, c.startUncertain])).toEqual([['2026-01-01', false], ['2026-01-29', false]]);
+    expect(fixed.cycles[0]!.intermenstrualBleeding).toEqual(['2026-01-22']);
+    expect(fixed.nfp).toMatchObject({ kind: 'infertile-pre', rule: '5-day' });
+  });
+});
+
+// ---------------------------------------------------------------- hormonal contraception & forecasts
+
+describe('hormonal contraception and forecasts', () => {
+  const regular = { length: 28, ovulationDay: 15, temps: true, mucus: true };
+
+  it('predicts and evaluates nothing while hormonal contraception is in use', () => {
+    const entries = generate('2026-01-01', [{ length: 20 }, { length: 41 }, { length: 16 }]);
+    const a = analyze(entries, settings({ hormonalContraception: true, goal: 'avoid', nfpAcknowledged: true }), addDays(entries.at(-1)!.date, 3));
+    expect(a).toMatchObject({ current: null, predictions: [], warnings: [], nfp: { kind: 'unavailable', reason: 'hormonal-contraception' } });
+
+    // The charts show the log only: no temperature shift, peak or ovulation, in any cycle.
+    const charted = generate('2026-01-01', [{ length: 28, ovulationDay: 15, temps: true, mucus: true }]);
+    const today = addDays(charted.at(-1)!.date, 3);
+    expect(analyze(charted, settings(), today).cycles[0]).toMatchObject({ ovulationDay: 15, postOvulatoryInfertileFrom: '2026-01-18' });
+    expect(analyze(charted, settings({ hormonalContraception: true }), today).cycles[0]).toMatchObject({
+      length: 28,
+      temperature: null,
+      mucusPeak: null,
+      ovulation: null,
+      lutealLength: null,
+      postOvulatoryInfertileFrom: null,
+    });
+  });
+
+  it('hides the calendar forecast of the fertile days while the Sensiplan evaluation is on', () => {
+    const entries = generate('2026-01-01', [regular, regular, regular]);
+    const today = addDays(entries.at(-1)!.date, 9);
+    expect(analyze(entries, settings(), today)).toMatchObject({ forecastHidden: null, current: { phase: 'fertile' } });
+
+    const a = analyze(entries, settings({ goal: 'avoid', nfpAcknowledged: true }), today);
+    expect(a).toMatchObject({ forecastHidden: 'sensiplan', current: { phase: 'cycle' } });
+    // The next period is still predicted, and a partner does not get the forecast either.
+    expect(a.predictions[1]!.start.date).toBe(addDays(entries.at(-1)!.date, 28));
+    const view = buildPartnerView(a, entries, 'Alice', ['fertility', 'history'], false);
+    expect(view.predictions[1]).toHaveProperty('start');
+    expect(view.predictions[1]).not.toHaveProperty('fertileStart');
+  });
+
+  it('hides it for the first three cycles after hormonal contraception, unless trying to conceive', () => {
+    const marked = (goal: Settings['goal']) => settings({ goal, afterHormonalContraception: ['2026-01-01'] });
+    const two = generate('2026-01-01', [regular, regular]);
+    const today = addDays(two.at(-1)!.date, 9);
+    expect(analyze(two, marked('track'), today)).toMatchObject({ forecastHidden: 'after-hormones', confidence: 'low' });
+    expect(analyze(two, marked('conceive'), today).forecastHidden).toBeNull();
+
+    const three = generate('2026-01-01', [regular, regular, regular]);
+    expect(analyze(three, marked('track'), addDays(three.at(-1)!.date, 9)).forecastHidden).toBeNull();
+  });
+
+  it('uses only the cycles since hormonal contraception for the statistics', () => {
+    const entries = generate('2026-01-01', [{ length: 40 }, { length: 40 }, { length: 28 }, { length: 28 }, { length: 28 }]);
+    const stats = computeStats(buildCycles(entries, settings({ afterHormonalContraception: ['2026-03-22'] }), '2026-07-01'));
+    expect(stats).toMatchObject({ count: 3, mean: 28 });
+  });
+
+  it('expects ovulation on the same cycle day in the current and the following cycles', () => {
+    // Average cycle 28.3 days, luteal phase 12.6 days.
+    const specs = [[28, 15], [29, 16], [28, 16], [29, 16], [28, 16]].map(([length, ovulationDay]) => ({ length: length!, ovulationDay, temps: true, mucus: true }));
+    const entries = generate('2026-01-01', specs);
+    const a = analyze(entries, settings(), addDays(entries.at(-1)!.date, 1));
+    expect(a.stats.lutealMean).toBe(12.6);
+    expect(new Set(a.predictions.map((p) => diffDays(p.start.date, p.ovulation.date) + 1))).toEqual(new Set([15]));
   });
 });

@@ -48,7 +48,7 @@ function feedbackLink(base: string, kind: 'bug' | 'feature'): string {
 }
 
 export function SettingsView() {
-  const { settings, saveSettings, me } = useStore();
+  const { settings, saveSettings, me, today } = useStore();
   const t = useT();
   const s = t.settings;
   const toast = useToast();
@@ -60,6 +60,9 @@ export function SettingsView() {
       toast(t.common.couldNotSave((e as Error).message));
     }
   };
+  // When a pause or hormonal contraception really ended, the date is kept: the stricter rules
+  // for the cycles after it depend on it. Declining only switches the mode off.
+  const ended = (dates: string[], question: string) => (confirm(question) ? [...new Set([...dates, today])].sort() : dates);
   const track = (k: keyof Settings['track'], v: boolean) => update({ track: { ...settings.track, [k]: v } });
 
   return (
@@ -96,7 +99,24 @@ export function SettingsView() {
                 onChange={(v) => v && update({ goal: v })}
               />
               {settings.goal === 'avoid' && <NfpAcknowledge />}
-              <Switch label={s.pause} hint={s.pauseHint} checked={settings.paused} onChange={(v) => update({ paused: v })} />
+              <Switch
+                label={s.pause}
+                hint={s.pauseHint}
+                checked={settings.paused}
+                onChange={(v) => update(v ? { paused: true } : { paused: false, historyRestarts: ended(settings.historyRestarts, s.pauseEndConfirm) })}
+              />
+              <Switch
+                label={s.hormonal}
+                hint={s.hormonalHint}
+                checked={settings.hormonalContraception}
+                onChange={(v) =>
+                  update(
+                    v
+                      ? { hormonalContraception: true }
+                      : { hormonalContraception: false, hormonesStopped: ended(settings.hormonesStopped, s.hormonalEndConfirm) },
+                  )
+                }
+              />
             </section>
 
             <section className="card">

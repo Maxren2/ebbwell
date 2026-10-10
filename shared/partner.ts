@@ -74,20 +74,24 @@ export function buildPartnerView(
   }
 
   const c = analysis.current;
+  const confirmed = fertility && !!analysis.cycles.at(-1)?.ovulation?.confirmed;
   const current = c
     ? {
         cycleStart: c.cycleStart,
         cycleDay: c.cycleDay,
         phase: fertility || c.phase === 'period' || c.phase === 'late' ? c.phase : ('cycle' as const),
         daysLate: c.daysLate,
-        ovulationConfirmed: fertility && !!analysis.cycles.at(-1)?.ovulation?.confirmed,
+        ovulationConfirmed: confirmed,
       }
     : null;
 
-  const predictions: PartnerPrediction[] = analysis.predictions.map((p) =>
-    fertility
+  // The owner's own screen hides the calendar forecast of the fertile days in some situations
+  // (Sensiplan evaluation on, first cycles after hormones): the partner does not get it either.
+  const forecast = fertility && !analysis.forecastHidden;
+  const predictions: PartnerPrediction[] = analysis.predictions.map((p, i) =>
+    forecast
       ? { start: p.start, periodEnd: p.periodEnd, ovulation: p.ovulation, fertileStart: p.fertileStart, fertileEnd: p.fertileEnd, peakFertileStart: p.peakFertileStart, peakFertileEnd: p.peakFertileEnd }
-      : { start: p.start, periodEnd: p.periodEnd },
+      : { start: p.start, periodEnd: p.periodEnd, ...(i === 0 && confirmed && { ovulation: p.ovulation }) },
   );
 
   const s = analysis.stats;

@@ -153,7 +153,7 @@ export async function runReminders(store: Store, send: PushSender, now: Date = n
       }
 
       if (due(n.time)) {
-        if (own && !settings.paused && (n.period.enabled || n.fertile.enabled)) {
+        if (own && !settings.paused && !settings.hormonalContraception && (n.period.enabled || n.fertile.enabled)) {
           const { analysis } = analysisFor(userId, date);
           const next = analysis.predictions[1]?.start.date;
           if (n.period.enabled && next && !analysis.current?.inPeriod && diffDays(date, next) === n.period.daysBefore) {
@@ -165,7 +165,8 @@ export async function runReminders(store: Store, send: PushSender, now: Date = n
           }
           const cur = analysis.predictions[0];
           const confirmed = analysis.cycles.at(-1)?.ovulation?.confirmed;
-          if (n.fertile.enabled && settings.goal !== 'track' && cur && !confirmed && date === cur.fertileStart) {
+          // The calendar forecast of the fertile days is not announced where the app does not show it.
+          if (n.fertile.enabled && settings.goal !== 'track' && !analysis.forecastHidden && cur && !confirmed && date === cur.fertileStart) {
             await notify('fertile', cur.fertileStart, { body: reminderText('fertile', n.discreet, {}, lang), tag: 'fertile', url: '/' });
           }
         }
@@ -173,7 +174,7 @@ export async function runReminders(store: Store, send: PushSender, now: Date = n
         if (n.partner.enabled) {
           for (const share of store.sharesAsPartner(userId)) {
             const owner = analysisFor(share.ownerId, date);
-            if (owner.settings.paused) continue;
+            if (owner.settings.paused || owner.settings.hormonalContraception) continue;
             const next = owner.analysis.predictions[1]?.start.date;
             if (!next || owner.analysis.current?.inPeriod || diffDays(date, next) !== n.partner.daysBefore) continue;
             const name = store.getUser(share.ownerId)?.name.split(' ')[0];

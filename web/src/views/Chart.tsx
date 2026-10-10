@@ -14,7 +14,7 @@ const PLOT_H = 210;
 const ROW = 22;
 
 export function ChartView() {
-  const { analysis, today } = useStore();
+  const { analysis, today, settings } = useStore();
   const t = useT();
   const [index, setIndex] = useState<number | null>(null);
   const cycles = analysis.cycles;
@@ -52,7 +52,13 @@ export function ChartView() {
           <div className="card">
             <CycleChart cycle={cycle} to={cycle.end ?? today} />
           </div>
-          <Evaluation cycle={cycle} />
+          {settings.hormonalContraception ? (
+            <div className="card small">
+              <p className="muted">{t.chart.hormonal}</p>
+            </div>
+          ) : (
+            <Evaluation cycle={cycle} />
+          )}
         </div>
       )}
     </>
@@ -75,15 +81,18 @@ function Evaluation({ cycle }: { cycle: Cycle }) {
           : temp.status === 'confirmed'
             ? c.shiftConfirmed(day(temp.confirmedOn!), c.rules[temp.rule!], day(temp.firstHigh), fmtTemp(temp.coverline, unit))
             : c.shiftPending(temp.highDates.length, fmtTemp(temp.coverline, unit))}
-        {cycle.afterHormonalContraception && c.afterPill}
+        {cycle.extraReading && c.afterPill}
       </div>
       {cycle.ignoredExclusions.length > 0 && <div>{c.exclusionIgnored(cycle.ignoredExclusions.map((d) => c.dayN(day(d))).join(', '))}</div>}
       <div>
         <strong>{c.mucusPeak}</strong>
-        {cycle.mucusPeak
-          ? c.peakFound(day(cycle.mucusPeak.peak), MUCUS_LABELS[cycle.mucusPeak.category], day(cycle.mucusPeak.confirmedOn))
-          : c.peakNone}
+        {!cycle.mucusPeak
+          ? c.peakNone
+          : cycle.mucusPeak.bleeding
+            ? c.peakBleeding(day(cycle.mucusPeak.peak), day(cycle.mucusPeak.confirmedOn))
+            : c.peakFound(day(cycle.mucusPeak.peak), MUCUS_LABELS[cycle.mucusPeak.category], day(cycle.mucusPeak.confirmedOn))}
       </div>
+      {cycle.mucusGaps.length > 0 && <div>{c.mucusGaps(cycle.mucusGaps.map((d) => c.dayN(day(d))).join(', '))}</div>}
       <div>
         <strong>{c.ovulation}</strong>
         {cycle.ovulation && cycle.ovulationDay !== null ? c.ovulationFound(cycle.ovulationDay, t.method[cycle.ovulation.method]) : c.ovulationNone}
@@ -98,7 +107,7 @@ function Evaluation({ cycle }: { cycle: Cycle }) {
       {cycle.intermenstrualBleeding.length > 0 && (
         <div>
           <strong>{c.bleedingBetween}</strong>
-          {cycle.intermenstrualBleeding.map((d) => c.dayN(day(d))).join(', ')}.
+          {cycle.intermenstrualBleeding.map((d) => c.dayN(day(d))).join(', ')}.{c.bleedingFertile}
         </div>
       )}
     </div>
@@ -271,16 +280,16 @@ function CycleChart({ cycle, to }: { cycle: Cycle; to: string }) {
                   stroke="var(--period)"
                 />
               )}
-              {m !== null && (
+              {(m !== null || afterPeak === 0) && (
                 <text
                   x={cx}
                   y={rowsTop + 2 * ROW + 15}
                   fontSize="10"
                   textAnchor="middle"
-                  fontWeight={m >= 3 ? 700 : 400}
-                  style={{ fill: m >= 3 ? 'var(--fertile)' : undefined }}
+                  fontWeight={afterPeak === 0 || m! >= 3 ? 700 : 400}
+                  style={{ fill: afterPeak === 0 || m! >= 3 ? 'var(--fertile)' : undefined }}
                 >
-                  {afterPeak === 0 ? 'P' : MUCUS_LABELS[m]}
+                  {afterPeak === 0 ? 'P' : MUCUS_LABELS[m!]}
                 </text>
               )}
               {afterPeak !== null && afterPeak >= 1 && afterPeak <= 3 && (

@@ -119,9 +119,13 @@ export const de: Messages = {
     pausedTitle: 'Vorhersagen pausiert',
     pausedBody:
       'Der Schwangerschafts- / Pausenmodus ist an. Du kannst weiter eintragen; schalte ihn in den Einstellungen aus, um die Vorhersagen fortzusetzen.',
+    hormonalTitle: 'Hormonelle Verhütung',
+    hormonalBody:
+      'Solange du hormonell verhütest, wird nichts vorhergesagt oder ausgewertet. Du kannst Blutungen und Symptome weiter eintragen; schalte den Modus in den Einstellungen aus, wenn du absetzt.',
     disclaimer: 'Ebbwell ist ein Tagebuch, kein Medizinprodukt und kein Verhütungsmittel. Vorhersagen sind Schätzungen.',
     phase: {
       period: 'Periode',
+      cycle: 'Zwischen den Perioden',
       follicular: 'Vor dem fruchtbaren Fenster',
       fertile: 'Fruchtbares Fenster',
       peakFertile: 'Höchste Fruchtbarkeit',
@@ -136,6 +140,18 @@ export const de: Messages = {
     likelyPassed: 'Wahrscheinlich vorbei',
     expected: (range) => `erwartet ${range}`,
     fertile: (from, to) => `Fruchtbar ${from} – ${to}`,
+    notEstimated: 'Nicht geschätzt',
+    noForecast: {
+      sensiplan: 'Solange die Sensiplan-Auswertung an ist, werden die fruchtbaren Tage nicht aus dem Kalender geschätzt. Richte dich nach der Auswertung.',
+      'after-hormones':
+        'In den ersten drei Zyklen nach hormoneller Verhütung und solange deine Zyklen nicht regelmäßig sind, werden die fruchtbaren Tage nicht geschätzt: Jeder Tag kann fruchtbar sein.',
+    },
+    startCheck: {
+      title: (date) => `Hat deine Periode am ${date} begonnen?`,
+      body: 'Ebbwell ist nicht sicher, ob diese Blutung der Beginn einer Periode ist: ein einzelner leichter Tag, ein sehr kurzer Zyklus davor oder eine weitere Blutung wenige Tage später.',
+      yes: 'Ja, das war der erste Tag',
+      no: 'Nein, das war keine Periode',
+    },
     alerts: {
       positiveTestTitle: 'Positiver Schwangerschaftstest eingetragen',
       positiveTestBody: (date) =>
@@ -162,15 +178,20 @@ export const de: Messages = {
         'evaluation-in-progress': 'Die Auswertung nach dem Eisprung ist nicht abgeschlossen: Betrachte dich als fruchtbar.',
         'no-shift-previous-cycle':
           'Im vorigen Zyklus wurde kein Temperaturanstieg bestätigt, daher gilt die 5-Tage-Regel nicht.',
-        'after-hormonal-contraception':
-          'Erster Zyklus nach hormoneller Verhütung: Am Zyklusbeginn gibt es keine unfruchtbaren Tage.',
+        'after-hormonal-contraception': 'Nach hormoneller Verhütung: Am Beginn dieses Zyklus gibt es keine unfruchtbaren Tage.',
+        'after-pause': 'Erster Zyklus nach einer Pause (Schwangerschaft, lange Unterbrechung): Am Zyklusbeginn gibt es keine unfruchtbaren Tage.',
+        'cycle-start-unconfirmed':
+          'Bestätige zuerst den ersten Tag dieser Periode: Bis dahin gelten am Zyklusanfang keine Tage als unfruchtbar.',
+        'hormonal-contraception': 'Unter hormoneller Verhütung lassen sich die Regeln nicht anwenden.',
         'mucus-observed': 'Ein Schleimzeichen wurde beobachtet: Die fruchtbare Phase hat begonnen.',
+        'bleeding-observed': 'Eine Blutung außerhalb der Periode wurde eingetragen. Sie zählt als Fruchtbarkeitszeichen: Die fruchtbare Phase hat begonnen.',
+        'short-cycles': 'Einer deiner letzten 12 Zyklen war zu kurz für unfruchtbare Tage am Zyklusanfang.',
         'pre-ovulatory-phase-ended': 'Die unfruchtbaren Tage vor dem Eisprung sind vorbei.',
       },
       off: 'Sensiplan-Auswertung aus',
       infertileUntil: (date) => `Unfruchtbar bis Ende ${date}`,
-      rules: { '5-day': '5-Tage-Regel', 'minus-8': 'Minus-8-Regel' },
-      preBody: (rule) => `Phase vor dem Eisprung, ${rule} – endet früher beim ersten Schleimzeichen.`,
+      rules: { '5-day': '5-Tage-Regel', 'minus-8': 'Minus-8-Regel', 'shortest-cycle': 'kürzester Zyklus minus 21' },
+      preBody: (rule) => `Phase vor dem Eisprung, ${rule} – endet früher beim ersten Schleimzeichen oder bei einer Blutung nach der Periode.`,
       fromEvening: 'Unfruchtbar ab heute Abend',
       untilNextPeriod: 'Unfruchtbar bis zur nächsten Periode',
       postBody: (date) => `Doppelte Kontrolle (Temperatur + Schleim) abgeschlossen am ${date}.`,
@@ -232,6 +253,8 @@ export const de: Messages = {
     bleeding: 'Blutung',
     notPeriod: 'Gehört nicht zur Periode',
     notPeriodHint: 'z. B. Zwischenblutung – beginnt keinen neuen Zyklus.',
+    firstDay: 'Erster Tag meiner Periode',
+    firstDayHint: 'Ankreuzen, wenn Ebbwell diesen Tag nicht als Beginn deiner Periode erkannt hat.',
     temperature: 'Basaltemperatur',
     timeMeasured: 'Messzeit',
     tempRange: (min, max) => `Gib einen Wert zwischen ${min} und ${max} ein.`,
@@ -298,7 +321,10 @@ export const de: Messages = {
       `${p(n, { one: '# Messwert', other: '# Messwerte' })} über der Hilfslinie ${coverline} – Bestätigung ausstehend.`,
     mucusPeak: 'Schleimhöhepunkt: ',
     peakFound: (day, category, confirmedDay) => `Tag ${day} (${category}), bestätigt an Tag ${confirmedDay}.`,
+    peakBleeding: (day, confirmedDay) => `Tag ${day} (letzter Tag einer Blutung außerhalb der Periode), bestätigt an Tag ${confirmedDay}.`,
     peakNone: 'nicht erkannt (braucht den Höhepunkt, gefolgt von 3 Tagen mit geringerer Qualität).',
+    mucusGaps: (days) =>
+      `Schleimbeobachtung fehlt: ${days}. Die doppelte Kontrolle braucht eine für jeden Tag vom Höhepunkt bis zum Abschluss der Temperaturauswertung.`,
     ovulation: 'Eisprung: ',
     ovulationFound: (day, method) => `Tag ${day} – ${method}.`,
     ovulationNone: 'nicht bestimmt.',
@@ -306,10 +332,12 @@ export const de: Messages = {
     doubleCheck: 'Doppelte Kontrolle: ',
     doubleCheckDone: (day) => `abgeschlossen an Tag ${day} (abends).`,
     bleedingBetween: 'Blutung zwischen den Perioden: ',
+    bleedingFertile: ' Sie wird wie fruchtbarer Schleim gewertet.',
+    hormonal: 'Unter hormoneller Verhütung wird die Kurve nicht ausgewertet.',
     dayN: (n) => `Tag ${n}`,
     aria: 'Temperatur und Beobachtungen in diesem Zyklus',
     coverLine: 'Hilfslinie',
-    afterPill: ' Erster Zyklus nach hormoneller Verhütung: Es wird ein weiterer höherer Messwert abgewartet.',
+    afterPill: ' Nach hormoneller Verhütung: Bis zur ersten bestätigten Hochlage wird ein weiterer höherer Messwert abgewartet.',
     exclusionIgnored: (days) =>
       `Trotz Ausklammern gewertet: ${days}. Notiere die Störung, um einen Messwert auszuklammern.`,
     rows: { day: 'Tag', bleeding: 'Blutung', mucus: 'Schleim', tests: 'Tests' },
@@ -354,7 +382,11 @@ export const de: Messages = {
       },
       {
         label: 'Ausgeschlossene Zyklen',
-        text: '(nach hormoneller Verhütung, Schwangerschaft, Krankheit …) werden in der Statistik nicht berücksichtigt.',
+        text: '(Schwangerschaft, Krankheit …) werden in der Statistik nicht berücksichtigt.',
+      },
+      {
+        label: 'Nach hormoneller Verhütung:',
+        text: 'Es zählen nur die Zyklen seit dem Absetzen, und in den ersten drei Zyklen oder bei unregelmäßigen Zyklen werden die fruchtbaren Tage nicht geschätzt.',
       },
     ],
     cycles: 'Zyklen',
@@ -366,7 +398,9 @@ export const de: Messages = {
     lutealShort: (n) => ` · Lutealphase ${n} T.`,
     exclude: 'Ausschließen',
     afterPill: 'Nach der Pille',
-    afterPillHint: 'Erster Zyklus nach dem Absetzen hormoneller Verhütung: keine unfruchtbaren Tage am Zyklusbeginn, und die Temperaturauswertung wartet einen Tag länger (Sensiplan).',
+    afterPillHint:
+      'Erster Zyklus nach dem Absetzen hormoneller Verhütung: keine unfruchtbaren Tage am Zyklusbeginn, bis zur ersten bestätigten Hochlage wird ein weiterer höherer Messwert abgewartet, und frühere Zyklen zählen nicht mehr.',
+    hormonalNote: 'Unter hormoneller Verhütung sagt die Zyklusstatistik wenig aus: Die Blutungen folgen dann keinem natürlichen Zyklus.',
   },
 
   settings: {
@@ -375,6 +409,13 @@ export const de: Messages = {
     goals: { track: 'Beobachten', conceive: 'Kinderwunsch', avoid: 'Verhüten' },
     pause: 'Schwangerschafts- / Pausenmodus',
     pauseHint: 'Stoppt die Vorhersagen (Schwangerschaft, Wochenbett, Stillzeit …). Du kannst weiter eintragen.',
+    pauseEndConfirm:
+      'Ist eine Schwangerschaft oder eine lange Pause zu Ende?\n\nOK: Ebbwell zählt deine Zyklen für die Sensiplan-Regeln von vorn.\nAbbrechen: Der Modus war versehentlich an.',
+    hormonal: 'Hormonelle Verhütung',
+    hormonalHint:
+      'Pille, Implantat, Hormonspirale, Spritze, Pflaster oder Ring. Ebbwell führt dann nur dein Tagebuch: keine Vorhersagen und keine Sensiplan-Auswertung.',
+    hormonalEndConfirm:
+      'Hast du die hormonelle Verhütung abgesetzt?\n\nOK: Ab heute gelten die strengeren Regeln nach hormoneller Verhütung.\nAbbrechen: Der Modus war versehentlich an.',
     whatToTrack: 'Was erfassen',
     track: {
       temperature: 'Basaltemperatur',
@@ -397,7 +438,7 @@ export const de: Messages = {
     nfpOn: 'Die Sensiplan-Auswertung ist an (5-Tage- / Minus-8-Regel, doppelte Kontrolle).',
     nfpBeforeTitle: 'Bevor du dich zur Verhütung auf Ebbwell verlässt',
     nfpBeforeBody:
-      'Die symptothermale Methode (Sensiplan) ist nur bei korrekter Anwendung sehr sicher: tägliche Temperaturmessung beim Aufwachen, tägliche Schleimbeobachtung und die Regeln, gelernt bei einer qualifizierten Beraterin oder aus dem offiziellen Buch. Die typische Anwendung ist weniger sicher als die perfekte. Ebbwell zeigt die Regelauswertung; Beobachtungsfehler führen zu Fehlern im Ergebnis.',
+      'Die symptothermale Methode (Sensiplan) ist nur bei korrekter Anwendung sehr sicher: tägliche Temperaturmessung beim Aufwachen, tägliche Schleimbeobachtung und die Regeln, gelernt bei einer qualifizierten Beraterin oder aus dem offiziellen Buch. Die typische Anwendung ist weniger sicher als die perfekte. Ebbwell zeigt die Regelauswertung; Beobachtungsfehler führen zu Fehlern im Ergebnis. Unter hormoneller Verhütung oder hormonell wirkenden Medikamenten lässt sich die Methode nicht anwenden.',
     nfpAck: 'Ich habe die Methode gelernt und verstehe, dass Ebbwell kein Medizinprodukt ist.',
     data: {
       title: 'Deine Daten',

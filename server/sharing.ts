@@ -106,6 +106,6 @@ export function registerSharingRoutes(app: FastifyInstance, deps: { config: Conf
     const settings = store.getSettings(share.ownerId);
     const entries = store.listDays(share.ownerId).filter((e) => e.date <= addDays(today, 1));
     const analysis = analyze(entries, settings, today);
-    return buildPartnerView(analysis, entries, firstName(share.ownerId), share.scopes, settings.paused);
+    return buildPartnerView(analysis, entries, firstName(share.ownerId), share.scopes, settings.paused || settings.hormonalContraception);
   });
 }

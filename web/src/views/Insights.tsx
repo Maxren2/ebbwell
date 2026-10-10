@@ -21,7 +21,13 @@ export function Insights() {
       const set = new Set(settings[key]);
       if (on) set.add(start);
       else set.delete(start);
-      await saveSettings({ [key]: [...set].sort() });
+      const patch: Partial<typeof settings> = { [key]: [...set].sort() };
+      if (key === 'afterHormonalContraception' && !on) {
+        // Also forget a recorded stop date that made this cycle the first one after hormones.
+        const before = analysis.cycles[analysis.cycles.findIndex((c) => c.start === start) - 1]?.start ?? '';
+        patch.hormonesStopped = settings.hormonesStopped.filter((d) => d <= before || d > start);
+      }
+      await saveSettings(patch);
     } catch (e) {
       toast(t.common.couldNotSave((e as Error).message));
     } finally {
@@ -48,13 +54,19 @@ export function Insights() {
           />
         </div>
 
-        <div className="card">
-          <h3>{x.regularity}</h3>
-          <h2>{x.regularityLabel[s.regularity]}</h2>
-          <p className="small muted">{x.regularityBody[s.regularity]}</p>
-          {s.frequency === 'frequent' && <p className="small">{x.frequent}</p>}
-          {s.frequency === 'infrequent' && <p className="small">{x.infrequent}</p>}
-        </div>
+        {settings.hormonalContraception ? (
+          <div className="card">
+            <p className="small muted">{x.hormonalNote}</p>
+          </div>
+        ) : (
+          <div className="card">
+            <h3>{x.regularity}</h3>
+            <h2>{x.regularityLabel[s.regularity]}</h2>
+            <p className="small muted">{x.regularityBody[s.regularity]}</p>
+            {s.frequency === 'frequent' && <p className="small">{x.frequent}</p>}
+            {s.frequency === 'infrequent' && <p className="small">{x.infrequent}</p>}
+          </div>
+        )}
 
         <details className="card">
           <summary>{x.howTitle}</summary>
@@ -108,7 +120,7 @@ export function Insights() {
                       <input
                         type="checkbox"
                         disabled={busy}
-                        checked={c.afterHormonalContraception}
+                        checked={c.firstAfterHormones}
                         onChange={(e) => toggle('afterHormonalContraception', c.start, e.target.checked)}
                       />
                       {x.afterPill}

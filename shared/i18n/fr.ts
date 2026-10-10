@@ -118,9 +118,13 @@ export const fr: Messages = {
     hi: (name) => `Bonjour ${name}`,
     pausedTitle: 'Prévisions en pause',
     pausedBody: 'Le mode grossesse / pause est activé. Vous pouvez continuer à noter ; désactivez-le dans Réglages pour reprendre les prévisions.',
+    hormonalTitle: 'Contraception hormonale',
+    hormonalBody:
+      'Rien n’est prévu ni évalué tant que vous utilisez une contraception hormonale. Vous pouvez continuer à noter saignements et symptômes ; désactivez le mode dans Réglages quand vous arrêtez.',
     disclaimer: "Ebbwell est un journal, pas un dispositif médical ni un contraceptif. Les prévisions sont des estimations.",
     phase: {
       period: 'Règles',
+      cycle: 'Entre les règles',
       follicular: 'Avant la fenêtre fertile',
       fertile: 'Fenêtre fertile',
       peakFertile: 'Pic de fertilité',
@@ -135,6 +139,18 @@ export const fr: Messages = {
     likelyPassed: 'Probablement passée',
     expected: (range) => `prévue ${range}`,
     fertile: (from, to) => `Fertile du ${from} au ${to}`,
+    notEstimated: 'Non estimée',
+    noForecast: {
+      sensiplan: 'Les jours fertiles ne sont pas estimés d’après le calendrier tant que l’évaluation Sensiplan est activée. Suivez l’évaluation.',
+      'after-hormones':
+        'Les jours fertiles ne sont pas estimés pendant les trois premiers cycles après une contraception hormonale, ni tant que vos cycles ne sont pas réguliers : chaque jour peut être fertile.',
+    },
+    startCheck: {
+      title: (date) => `Vos règles ont-elles commencé le ${date} ?`,
+      body: 'Ebbwell n’est pas sûr que ce saignement soit le début des règles : un seul jour léger, un cycle très court juste avant, ou un nouveau saignement quelques jours plus tard.',
+      yes: 'Oui, c’était le premier jour',
+      no: 'Non, ce n’étaient pas les règles',
+    },
     alerts: {
       positiveTestTitle: 'Test de grossesse positif noté',
       positiveTestBody: (date) => `Le ${date}. Vous pouvez activer le mode grossesse / pause dans Réglages pour arrêter les prévisions.`,
@@ -160,15 +176,20 @@ export const fr: Messages = {
         'evaluation-in-progress': 'Évaluation post-ovulatoire incomplète : considérez-vous comme fertile.',
         'no-shift-previous-cycle':
           "Aucune montée de température n'a été confirmée au cycle précédent : la règle des 5 jours ne s'applique pas.",
-        'after-hormonal-contraception':
-          'Premier cycle après une contraception hormonale : aucun jour du début du cycle ne compte comme infertile.',
+        'after-hormonal-contraception': 'Après une contraception hormonale : aucun jour du début de ce cycle ne compte comme infertile.',
+        'after-pause': 'Premier cycle après une pause (grossesse, longue interruption) : aucun jour du début du cycle ne compte comme infertile.',
+        'cycle-start-unconfirmed':
+          'Confirmez d’abord le premier jour de ces règles : d’ici là, aucun jour du début du cycle ne compte comme infertile.',
+        'hormonal-contraception': 'Les règles de la méthode ne peuvent pas s’appliquer sous contraception hormonale.',
         'mucus-observed': 'Un signe de glaire a été observé : la phase fertile a commencé.',
+        'bleeding-observed': 'Un saignement en dehors des règles a été noté. Il compte comme un signe fertile : la phase fertile a commencé.',
+        'short-cycles': 'L’un de vos 12 derniers cycles était trop court pour des jours infertiles en début de cycle.',
         'pre-ovulatory-phase-ended': 'Les jours infertiles pré-ovulatoires sont terminés.',
       },
       off: 'Évaluation Sensiplan désactivée',
       infertileUntil: (date) => `Infertile jusqu'à la fin du ${date}`,
-      rules: { '5-day': 'des 5 jours', 'minus-8': 'du moins 8' },
-      preBody: (rule) => `Phase pré-ovulatoire, règle ${rule} — se termine plus tôt au premier signe de glaire.`,
+      rules: { '5-day': 'des 5 jours', 'minus-8': 'du moins 8', 'shortest-cycle': 'du cycle le plus court moins 21' },
+      preBody: (rule) => `Phase pré-ovulatoire, règle ${rule} — se termine plus tôt au premier signe de glaire ou à un saignement après les règles.`,
       fromEvening: 'Infertile à partir de ce soir',
       untilNextPeriod: "Infertile jusqu'aux prochaines règles",
       postBody: (date) => `Double contrôle terminé (température + glaire) le ${date}.`,
@@ -230,6 +251,8 @@ export const fr: Messages = {
     bleeding: 'Saignements',
     notPeriod: 'Ne fait pas partie des règles',
     notPeriodHint: 'p. ex. saignement intermédiaire — ne démarre pas un nouveau cycle.',
+    firstDay: 'Premier jour de mes règles',
+    firstDayHint: 'Cochez si Ebbwell n’a pas retenu ce jour comme début de vos règles.',
     temperature: 'Température basale',
     timeMeasured: 'Heure de mesure',
     tempRange: (min, max) => `Saisissez une valeur entre ${min} et ${max}.`,
@@ -296,7 +319,10 @@ export const fr: Messages = {
       `${p(n, { one: '# mesure', other: '# mesures' })} au-dessus de la ligne de couverture ${coverline} — en attente de confirmation.`,
     mucusPeak: 'Pic de glaire : ',
     peakFound: (day, category, confirmedDay) => `jour ${day} (${category}), confirmé au jour ${confirmedDay}.`,
+    peakBleeding: (day, confirmedDay) => `jour ${day} (dernier jour de saignement en dehors des règles), confirmé le jour ${confirmedDay}.`,
     peakNone: 'non identifié (il faut le pic suivi de 3 jours de qualité inférieure).',
+    mucusGaps: (days) =>
+      `Observation de la glaire manquante : ${days}. Le double contrôle en demande une pour chaque jour, du pic jusqu’à la fin de l’évaluation de la température.`,
     ovulation: 'Ovulation : ',
     ovulationFound: (day, method) => `jour ${day} — ${method}.`,
     ovulationNone: 'non déterminée.',
@@ -304,10 +330,12 @@ export const fr: Messages = {
     doubleCheck: 'Double contrôle : ',
     doubleCheckDone: (day) => `terminé au jour ${day} (le soir).`,
     bleedingBetween: 'Saignements entre les règles : ',
+    bleedingFertile: ' Ils sont évalués comme une glaire fertile.',
+    hormonal: 'La courbe n’est pas évaluée tant que vous utilisez une contraception hormonale.',
     dayN: (n) => `jour ${n}`,
     aria: 'Température et observations de ce cycle',
     coverLine: 'ligne de couverture',
-    afterPill: ' Premier cycle après une contraception hormonale : une mesure haute de plus est attendue.',
+    afterPill: ' Après une contraception hormonale : une mesure haute de plus est attendue jusqu’à la première montée confirmée.',
     exclusionIgnored: (days) =>
       `Comptées malgré l’exclusion : ${days}. Notez la perturbation pour mettre une mesure de côté.`,
     rows: { day: 'Jour', bleeding: 'Sang', mucus: 'Glaire', tests: 'Tests' },
@@ -352,7 +380,11 @@ export const fr: Messages = {
       },
       {
         label: 'Les cycles exclus',
-        text: '(après une contraception hormonale, une grossesse, une maladie…) sont ignorés dans les statistiques.',
+        text: '(grossesse, maladie…) sont ignorés dans les statistiques.',
+      },
+      {
+        label: 'Après une contraception hormonale :',
+        text: 'seuls les cycles depuis l’arrêt sont utilisés, et les jours fertiles ne sont pas estimés pendant les trois premiers cycles ni tant que vos cycles ne sont pas réguliers.',
       },
     ],
     cycles: 'Cycles',
@@ -364,7 +396,9 @@ export const fr: Messages = {
     lutealShort: (n) => ` · lutéale ${n} j`,
     exclude: 'Exclure',
     afterPill: 'Après la pilule',
-    afterPillHint: 'Premier cycle après l’arrêt d’une contraception hormonale : aucun jour infertile en début de cycle, et l’évaluation de la température attend un jour de plus (Sensiplan).',
+    afterPillHint:
+      'Premier cycle après l’arrêt d’une contraception hormonale : aucun jour infertile en début de cycle, une mesure haute de plus est attendue jusqu’à la première montée confirmée, et les cycles précédents ne comptent plus.',
+    hormonalNote: 'Les statistiques de cycle disent peu de chose sous contraception hormonale : les saignements ne suivent alors pas un cycle naturel.',
   },
 
   settings: {
@@ -373,6 +407,13 @@ export const fr: Messages = {
     goals: { track: 'Suivre', conceive: 'Concevoir', avoid: 'Éviter une grossesse' },
     pause: 'Mode grossesse / pause',
     pauseHint: 'Arrête les prévisions (grossesse, post-partum, allaitement…). Vous pouvez continuer à noter.',
+    pauseEndConfirm:
+      'Une grossesse ou une longue interruption vient-elle de se terminer ?\n\nOK : Ebbwell recommence à compter vos cycles pour les règles Sensiplan.\nAnnuler : le mode était activé par erreur.',
+    hormonal: 'Contraception hormonale',
+    hormonalHint:
+      'Pilule, implant, stérilet hormonal, injection, patch ou anneau. Ebbwell tient alors seulement votre journal : ni prévisions ni évaluation Sensiplan.',
+    hormonalEndConfirm:
+      'Avez-vous arrêté la contraception hormonale ?\n\nOK : les règles plus strictes après une contraception hormonale s’appliquent dès aujourd’hui.\nAnnuler : le mode était activé par erreur.',
     whatToTrack: 'Que suivre',
     track: {
       temperature: 'Température basale',
@@ -395,7 +436,7 @@ export const fr: Messages = {
     nfpOn: 'L’évaluation Sensiplan est activée (règles des 5 jours / du moins 8, double contrôle).',
     nfpBeforeTitle: 'Avant de compter sur Ebbwell pour éviter une grossesse',
     nfpBeforeBody:
-      "La méthode symptothermique (Sensiplan) n'est très efficace qu'avec une utilisation correcte : température chaque matin au réveil, observation quotidienne de la glaire et règles apprises auprès d'un·e conseiller·ère qualifié·e ou dans le livre officiel. L'utilisation courante est moins efficace que l'utilisation parfaite. Ebbwell affiche l'évaluation des règles ; une erreur d'observation entraîne une erreur de résultat.",
+      "La méthode symptothermique (Sensiplan) n'est très efficace qu'avec une utilisation correcte : température chaque matin au réveil, observation quotidienne de la glaire et règles apprises auprès d'un·e conseiller·ère qualifié·e ou dans le livre officiel. L'utilisation courante est moins efficace que l'utilisation parfaite. Ebbwell affiche l'évaluation des règles ; une erreur d'observation entraîne une erreur de résultat. La méthode ne peut pas être utilisée avec une contraception hormonale ou un traitement hormonal.",
     nfpAck: "J'ai appris la méthode et je comprends qu'Ebbwell n'est pas un dispositif médical.",
     data: {
       title: 'Vos données',
