@@ -52,7 +52,7 @@ docker run -d --name ebbwell -p 8080:8080 -v ebbwell-data:/data \
   -e OIDC_CLIENT_ID=... -e OIDC_CLIENT_SECRET=... \
   -e LOCAL_LOGIN=local-network -e ADMIN_USERNAME=admin -e ADMIN_PASSWORD=... \
   -e DATA_ENCRYPTION_KEY="$(openssl rand -base64 32)" \
-  ghcr.io/maxren2/ebbwell:0.7.5
+  ghcr.io/maxren2/ebbwell:0.7.6
 ```
 
 Keep a copy of `DATA_ENCRYPTION_KEY`: without it the data can't be decrypted.
@@ -81,6 +81,14 @@ npm run typecheck
 ```
 
 The server is TypeScript run directly by Node 24 (type stripping), with no build step and no native modules. SQLite comes from `node:sqlite`.
+
+Dependency security overrides are declared in `package.json`. The build-only `deepmerge`
+dependency has no upstream fix for GHSA-gcqx-w48m-w2h4, so `vendor/deepmerge` contains
+an MIT-licensed local patch of 4.3.1 that uses own-property definitions instead of
+assignments when merging. Its local version is not an upstream release. Remove the
+override and local copy when the upstream build dependency includes a patched version.
+The `filelist` override keeps its Windows glob matching compatible with the patched
+`minimatch` major version.
 
 ```
 shared/   cycle engine, partner view and quick-entry parser (pure TS, shared by browser and server) + zod schemas

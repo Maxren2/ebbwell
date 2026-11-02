@@ -1,0 +1,8 @@
+{
+  "name": "@ebbwell/deepmerge",
+  "version": "4.3.2-ebbwell.1",
+  "private": true,
+  "description": "Local security patch of deepmerge 4.3.1 for GHSA-gcqx-w48m-w2h4",
+  "main": "index.cjs",
+  "license": "MIT"
+}

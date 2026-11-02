@@ -18,8 +18,14 @@ let dir: string;
 let store: Store;
 let app: FastifyInstance;
 
-async function setup(env: Record<string, string>) {
+async function setup(env: Record<string, string>, staticFiles = false) {
   dir = mkdtempSync(join(tmpdir(), 'ebbwell-'));
+  if (staticFiles) {
+    mkdirSync(join(dir, 'none', 'assets'), { recursive: true });
+    writeFileSync(join(dir, 'none', 'index.html'), '<!doctype html><title>Ebbwell</title>');
+    writeFileSync(join(dir, 'none', 'assets', 'app.js'), 'console.log("app");');
+    writeFileSync(join(dir, 'none', 'sw.js'), '// service worker');
+  }
   const config = loadConfig({
     APP_URL,
     DATA_DIR: dir,
@@ -47,6 +53,28 @@ const cookieOf = (res: LightMyRequestResponse, name: string) => res.cookies.find
 
 const write = { 'x-ebbwell-csrf': '1', origin: APP_URL, 'content-type': 'application/json' };
 const csrf = { 'x-ebbwell-csrf': '1', origin: APP_URL };
+
+describe('static files with patched glob dependencies', () => {
+  beforeEach(() => setup({ AUTH_MODE: 'dev', ALLOW_INSECURE_DEV_AUTH: 'true' }, true));
+  afterEach(teardown);
+
+  it('discovers assets, serves SPA routes, and leaves API misses as 404', async () => {
+    const asset = await app.inject({ method: 'GET', url: '/assets/app.js' });
+    expect(asset.statusCode).toBe(200);
+    expect(asset.body).toBe('console.log("app");');
+    expect(asset.headers['cache-control']).toContain('immutable');
+    const page = await app.inject({ method: 'GET', url: '/calendar' });
+    expect(page.statusCode).toBe(200);
+    expect(page.body).toContain('<title>Ebbwell</title>');
+    const worker = await app.inject({ method: 'GET', url: '/sw.js' });
+    expect(worker.statusCode).toBe(200);
+    expect(worker.headers['cache-control']).toBe('no-cache');
+    const auth = await app.inject({ method: 'GET', url: '/auth/login' });
+    const token = cookieOf(auth, '__Host-ebbwell_session')!;
+    const missing = await app.inject({ method: 'GET', url: '/api/missing', headers: { cookie: `__Host-ebbwell_session=${token}` } });
+    expect(missing.statusCode).toBe(404);
+  });
+});
 
 // ---------------------------------------------------------------- dev auth
 
@@ -416,4 +444,3 @@ describe('voice input (on-device Whisper)', () => {
     expect(res.headers['cross-origin-opener-policy']).toBe('same-origin');
   });
 });
-

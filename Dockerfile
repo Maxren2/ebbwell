@@ -4,6 +4,7 @@
 FROM node:24-alpine AS web
 WORKDIR /app
 COPY package.json package-lock.json ./
+COPY vendor ./vendor
 RUN npm ci --no-audit --no-fund
 COPY tsconfig.json vite.config.ts ./
 COPY shared ./shared
@@ -22,6 +23,7 @@ RUN MODELS_DIR=/app/models node scripts/fetch-models.ts
 FROM node:24-alpine AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
+COPY vendor ./vendor
 RUN npm ci --omit=dev --no-audit --no-fund && npm cache clean --force
 
 # ---- runtime: TypeScript runs natively (Node type stripping), no build step, no native modules
