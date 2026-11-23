@@ -54,6 +54,9 @@ describe('translations', () => {
     expect(messages('en').common.days(3)).toBe('3 days');
     expect(messages('fr').common.days(0)).toBe('0 jour');
     expect(messages('de').rel.inDays(2)).toBe('in 2 Tagen');
+    expect(messages('sv').common.days(1)).toBe('1 dag');
+    expect(messages('sv').common.days(3)).toBe('3 dagar');
+    expect(messages('sv').rel.inDays(2)).toBe('om 2 dagar');
     expect(messages('ar').common.days(2)).toBe('يومان');
     expect(messages('ar').common.days(5)).toBe('5 أيام');
     expect(messages('ar').common.days(14)).toBe('14 يومًا');
@@ -63,18 +66,21 @@ describe('translations', () => {
     expect(parseAcceptLanguage('de-CH,de;q=0.9,fr;q=0.8,en;q=0.5')).toEqual(['de-CH', 'de', 'fr', 'en']);
     expect(parseAcceptLanguage('en;q=0.2, ar-MA')).toEqual(['ar-MA', 'en']);
     expect(pickLanguage(parseAcceptLanguage('it-CH, fr-CH;q=0.7'))).toBe('fr');
+    expect(pickLanguage(parseAcceptLanguage('sv-SE, en;q=0.8'))).toBe('sv');
     expect(pickLanguage(['ja'])).toBe('en');
   });
 
   it('stores the language preference with the settings', () => {
     expect(SettingsSchema.parse({}).language).toBe('auto');
     expect(SettingsSchema.parse({ language: 'ar' }).language).toBe('ar');
+    expect(SettingsSchema.parse({ language: 'sv' }).language).toBe('sv');
     expect(SettingsSchema.safeParse({ language: 'xx' }).success).toBe(false);
   });
 
   it('writes reminders in the requested language', () => {
     expect(reminderText('period', false, { days: 2 }, 'fr')).toBe('Vos règles sont prévues dans 2 jours');
     expect(reminderText('partner', false, { days: 1, name: 'Alice' }, 'de')).toBe('Die Periode von Alice wird morgen erwartet');
+    expect(reminderText('period', false, { days: 2 }, 'sv')).toBe('Din mens förväntas om 2 dagar');
     expect(reminderText('temperature', true, {}, 'en')).toBe('Time for your morning check-in');
   });
 });
@@ -113,6 +119,12 @@ describe('server-rendered pages', () => {
     expect(res.body).toContain('<html lang="fr" dir="ltr">');
     expect(res.body).toContain('Se connecter à Ebbwell');
     expect(res.body).toContain('action="/auth/local"');
+  });
+
+  it('renders Swedish sign-in pages', async () => {
+    const res = await get('/auth/login', { 'accept-language': 'sv-SE,sv;q=0.9' });
+    expect(res.body).toContain('<html lang="sv" dir="ltr">');
+    expect(res.body).toContain('Logga in på Ebbwell');
   });
 
   it("prefers the language chosen in the app, and renders Arabic right-to-left", async () => {

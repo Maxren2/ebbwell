@@ -28,7 +28,7 @@ Calendar-only period apps predict the ovulation day correctly only about 8–21%
 | | |
 |---|---|
 | Daily log | Bleeding, basal temperature (time, disturbances, exclusion), cervical mucus (Sensiplan categories), cervix, LH and pregnancy tests, sex, symptoms, mood, notes |
-| Quick entry | Type or say one sentence ("36.52 at 6:45, light bleeding, cramps, tired") and the day's form fills in. Understood in English, French, German and Arabic; the text is read in the browser and never sent anywhere |
+| Quick entry | Type or say one sentence ("36.52 at 6:45, light bleeding, cramps, tired") and the day's form fills in. Understood in English, French, German, Swedish and Arabic; the text is read in the browser and never sent anywhere |
 | Voice input | Per device: the keyboard's dictation, or Whisper running on the phone itself (downloaded once from your server, about 79 MB). Audio never leaves the device |
 | Insights | Cycle and period length, variation, luteal phase, per-cycle ovulation method, exclude unusual cycles, pregnancy/pause mode, hormonal-contraception mode (log only, nothing predicted) |
 | Predictions | Next 3 periods, fertile window, ovulation with ranges and confidence; late-period detection with a pregnancy-test hint. The fertile-window forecast is hidden while the Sensiplan evaluation is on and in the first cycles after hormonal contraception |
@@ -39,7 +39,7 @@ Calendar-only period apps predict the ovulation day correctly only about 8–21%
 | Accounts | Single sign-on (OIDC + PKCE) and/or local accounts. You choose where passwords are accepted: nowhere, local network only (never through the public domain), or everywhere. Optional or required two-factor authentication (authenticator app + recovery codes). Admin panel: create/reset/disable accounts, reset 2FA; admins never see cycle data |
 | Security | Hashed server-side sessions, device list, CSRF protection, rate limiting and account lockout, audit log, key rotation, daily encrypted backups |
 | Platforms | Installable PWA (iOS 16.4+, Android, desktop), light/dark, offline app shell |
-| Languages | English, French, German and Arabic (right-to-left), chosen per user in Settings or following the device; sign-in pages and reminders too |
+| Languages | English, French, German, Swedish and Arabic (right-to-left), chosen per user in Settings or following the device; sign-in pages and reminders too |
 
 > Ebbwell is a journal, **not a medical device and not a contraceptive**.
 
