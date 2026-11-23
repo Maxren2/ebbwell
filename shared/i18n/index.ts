@@ -2,22 +2,23 @@ import { ar } from './ar.ts';
 import { de } from './de.ts';
 import { en, type Messages } from './en.ts';
 import { fr } from './fr.ts';
+import { sv } from './sv.ts';
 
 export type { Messages } from './en.ts';
 
-export const LANGUAGES = ['en', 'fr', 'de', 'ar'] as const;
+export const LANGUAGES = ['en', 'fr', 'de', 'sv', 'ar'] as const;
 export type Lang = (typeof LANGUAGES)[number];
 
 /** Each language's name, written in that language (for the language picker). */
-export const LANGUAGE_NAMES: Record<Lang, string> = { en: 'English', fr: 'Français', de: 'Deutsch', ar: 'العربية' };
+export const LANGUAGE_NAMES: Record<Lang, string> = { en: 'English', fr: 'Français', de: 'Deutsch', sv: 'Svenska', ar: 'العربية' };
 
 /** Formatting locales. Arabic keeps Western digits, so dates match the numbers typed in forms. */
-export const LOCALES: Record<Lang, string> = { en: 'en-GB', fr: 'fr', de: 'de', ar: 'ar-u-nu-latn' };
+export const LOCALES: Record<Lang, string> = { en: 'en-GB', fr: 'fr', de: 'de', sv: 'sv-SE', ar: 'ar-u-nu-latn' };
 
 /** Name of the cookie that carries the chosen language to the server-rendered pages. */
 export const LANG_COOKIE = 'ebbwell_lang';
 
-const CATALOGS: Record<Lang, Messages> = { en, fr, de, ar };
+const CATALOGS: Record<Lang, Messages> = { en, fr, de, sv, ar };
 
 export const messages = (lang: Lang): Messages => CATALOGS[lang];
 export const textDirection = (lang: Lang): 'ltr' | 'rtl' => (lang === 'ar' ? 'rtl' : 'ltr');

@@ -84,6 +84,26 @@ describe('quick entry', () => {
     });
   });
 
+  it('reads Swedish, including decimal temperatures and negated symptoms', () => {
+    const q = parseQuickEntry('36,52. Riklig blödning, ingen mensvärk, huvudvärk och trött.', 'sv');
+    expect(q).toMatchObject({
+      temperature: { value: 36.52 },
+      bleeding: 'heavy',
+      symptoms: ['headache', 'fatigue'],
+      unknown: [],
+    });
+  });
+
+  it('distinguishes poor sleep from insomnia in Swedish', () => {
+    expect(parseQuickEntry('36,52, sovit dåligt', 'sv')).toMatchObject({
+      temperature: { value: 36.52 },
+      disturbances: ['sleep'],
+      symptoms: [],
+      unknown: [],
+    });
+    expect(parseQuickEntry('sömnlöshet', 'sv').symptoms).toEqual(['insomnia']);
+  });
+
   it('reads Arabic, including Arabic-Indic digits and the definite article', () => {
     const q = parseQuickEntry('٣٦٫٥ نزيف خفيف وصداع والم الظهر، تعبانة', 'ar');
     expect(q).toMatchObject({

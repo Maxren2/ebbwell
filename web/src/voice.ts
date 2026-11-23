@@ -7,7 +7,7 @@ import type { VoiceReply, VoiceRequest } from './voice.worker.ts';
 
 export const MAX_RECORDING_SECONDS = 30;
 const SAMPLE_RATE = 16_000; // what Whisper expects
-// Ebbwell's language codes (en, fr, de, ar) are also Whisper's.
+// Ebbwell's language codes (en, fr, de, sv, ar) are also Whisper's.
 /** Where the transformers library caches downloaded model files (its default cache name). */
 const MODEL_CACHE = 'transformers-cache';
 
