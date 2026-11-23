@@ -94,6 +94,16 @@ describe('quick entry', () => {
     });
   });
 
+  it('distinguishes poor sleep from insomnia in Swedish', () => {
+    expect(parseQuickEntry('36,52, sovit dåligt', 'sv')).toMatchObject({
+      temperature: { value: 36.52 },
+      disturbances: ['sleep'],
+      symptoms: [],
+      unknown: [],
+    });
+    expect(parseQuickEntry('sömnlöshet', 'sv').symptoms).toEqual(['insomnia']);
+  });
+
   it('reads Arabic, including Arabic-Indic digits and the definite article', () => {
     const q = parseQuickEntry('٣٦٫٥ نزيف خفيف وصداع والم الظهر، تعبانة', 'ar');
     expect(q).toMatchObject({

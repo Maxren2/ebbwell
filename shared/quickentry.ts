@@ -341,7 +341,7 @@ const LEXICONS: Record<Lang, Lexicon> = {
       nausea: ['illamående', 'mår illa'],
       fatigue: ['trött', 'trötthet', 'utmattad', 'sömnig'],
       cravings: ['sug', 'sötsug', 'matsug'],
-      insomnia: ['sömnlöshet', 'kunde inte sova', 'svårt att sova', 'sovit dåligt'],
+      insomnia: ['sömnlöshet', 'kunde inte sova', 'svårt att sova'],
       diarrhea: ['diarré'],
       constipation: ['förstoppning', 'förstoppad'],
       ovulation_pain: ['ägglossningssmärta', 'ont vid ägglossning', 'ont i äggstockarna'],
