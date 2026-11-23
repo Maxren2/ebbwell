@@ -10,7 +10,59 @@ import { Cipher } from '../server/crypto.ts';
 import { Store } from '../server/db.ts';
 import { reminderText } from '../server/push.ts';
 import { LANGUAGES, messages, parseAcceptLanguage, pickLanguage } from '../shared/i18n/index.ts';
+import { PARAM_NAMES, PLURAL_PATHS } from '../shared/i18n/bindings.ts';
+import enCatalog from '../shared/i18n/locales/en.json' with { type: 'json' };
+import frCatalog from '../shared/i18n/locales/fr.json' with { type: 'json' };
+import deCatalog from '../shared/i18n/locales/de.json' with { type: 'json' };
+import svCatalog from '../shared/i18n/locales/sv.json' with { type: 'json' };
+import arCatalog from '../shared/i18n/locales/ar.json' with { type: 'json' };
 import { SettingsSchema } from '../shared/schema.ts';
+
+const RAW_CATALOGS: Record<(typeof LANGUAGES)[number], unknown> = {
+  en: enCatalog,
+  fr: frCatalog,
+  de: deCatalog,
+  sv: svCatalog,
+  ar: arCatalog,
+};
+const pluralPathSet = new Set<string>(PLURAL_PATHS);
+const helperPaths = new Set(['rel.inDays_today', 'rel.inDays_tomorrow']);
+const customParameters: Record<string, string[]> = {
+  'admin.connection_template': ['network', 'route', 'protocol'],
+  'admin.sso_configured': ['url'],
+  'admin.sso_notConfigured': ['url'],
+  'chart.luteal': ['days'],
+  'insights.sd': ['days'],
+  'partner.ovulation_confirmed': ['date'],
+  'partner.ovulation_expected': ['date'],
+  'partner.sharedBy': ['name', 'items'],
+  'partner.stats_none': ['mean', 'min', 'max'],
+  'partner.stats_period': ['mean', 'min', 'max', 'periodMean'],
+  'partner.stats_sd': ['mean', 'sd', 'min', 'max'],
+  'partner.stats_both': ['mean', 'sd', 'min', 'max', 'periodMean'],
+  'push.period': ['when'],
+  'push.partner_named': ['when', 'name'],
+  'push.partner_unnamed': ['when'],
+};
+
+function canonicalPath(path: string): string {
+  const match = path.match(/_(zero|one|two|few|many|other)$/);
+  const base = match ? path.slice(0, -match[0].length) : '';
+  return base && pluralPathSet.has(base) ? base : path;
+}
+
+function rawStrings(value: unknown, path = '', result: Array<[string, string]> = []): Array<[string, string]> {
+  if (typeof value === 'string') {
+    result.push([path, value]);
+  } else if (Array.isArray(value)) {
+    value.forEach((item, index) => rawStrings(item, `${path}.${index}`, result));
+  } else if (value && typeof value === 'object') {
+    for (const [key, nested] of Object.entries(value)) {
+      rawStrings(nested, path ? `${path}.${key}` : key, result);
+    }
+  }
+  return result;
+}
 
 /** Every key path of a catalog; functions are leaves. */
 function keys(value: unknown, prefix = ''): string[] {
@@ -19,18 +71,24 @@ function keys(value: unknown, prefix = ''): string[] {
 }
 
 /** Calls every function in a catalog with sample arguments and collects the strings. */
-function allStrings(value: unknown): string[] {
+function allStrings(value: unknown, path = ''): string[] {
   if (typeof value === 'string') return [value];
   if (typeof value === 'function') {
     const out: string[] = [];
+    const booleans = new Set(['configured', 'confirmed', 'local', 'viaPublicUrl', 'secure']);
+    const numbers = new Set(['n', 'day', 'firstHigh', 'left', 'min', 'max', 'mean', 'periodMean', 'sd', 'mb', 'pct', 's']);
+    const names = (PARAM_NAMES as Readonly<Record<string, readonly string[]>>)[path] ?? [];
     for (const n of [0, 1, 2, 3, 5, 11, 100]) {
-      const args = Array.from({ length: value.length }, (_, i) => (i === 0 ? n : i % 2 ? 'x' : n));
+      const args = names.map((name) =>
+        booleans.has(name) ? n % 2 === 1 : name === 'items' ? ['x', 'y'] : numbers.has(name) ? n : 'x',
+      );
       const r = (value as (...a: unknown[]) => unknown)(...args);
       if (typeof r === 'string') out.push(r);
     }
     return out;
   }
-  if (typeof value === 'object' && value !== null) return Object.values(value).flatMap(allStrings);
+  if (typeof value === 'object' && value !== null)
+    return Object.entries(value).flatMap(([k, v]) => allStrings(v, path ? `${path}.${k}` : k));
   return [];
 }
 
@@ -43,6 +101,45 @@ describe('translations', () => {
     expect(messages(lang).insights.how).toHaveLength(messages('en').insights.how.length);
   });
 
+  it('keeps raw locale keys, placeholders, and plural categories valid', () => {
+    const publicKeys = (entries: Array<[string, string]>) =>
+      [...new Set(entries.map(([path]) => canonicalPath(path)).filter((path) => !helperPaths.has(path)))].sort();
+    const englishKeys = publicKeys(rawStrings(RAW_CATALOGS.en));
+    const paramsByPath = PARAM_NAMES as Readonly<Record<string, readonly string[]>>;
+
+    for (const lang of LANGUAGES) {
+      const catalog = RAW_CATALOGS[lang];
+      const entries = rawStrings(catalog);
+      expect(publicKeys(entries)).toEqual(englishKeys);
+
+      for (const [path, template] of entries) {
+        expect(template.trim(), `${lang}:${path} must not be empty`).not.toBe('');
+        const canonical = canonicalPath(path);
+        const allowed = new Set(customParameters[canonical] ?? paramsByPath[canonical] ?? []);
+        if (pluralPathSet.has(canonical)) allowed.add('count');
+        expect(template.replace(/\{\{\w+\}\}/g, '')).not.toMatch(/\{\{|\}\}/);
+        for (const [, placeholder] of template.matchAll(/\{\{(\w+)\}\}/g)) {
+          if (placeholder) {
+            expect(allowed.has(placeholder), `${lang}:${path} has unknown placeholder {{${placeholder}}}`).toBe(true);
+          }
+        }
+      }
+
+      const pluralCategories = new Intl.PluralRules(lang).resolvedOptions().pluralCategories;
+      for (const path of PLURAL_PATHS) {
+        const parts = path.split('.');
+        const leaf = parts.pop()!;
+        const parent = parts.reduce<unknown>((value, key) =>
+          value && typeof value === 'object' ? (value as Record<string, unknown>)[key] : undefined, catalog);
+        if (!parent || typeof parent !== 'object') continue;
+        const value = (parent as Record<string, unknown>)[leaf];
+        if (typeof value === 'string') continue;
+        const forms = Object.keys(parent).map((key) => key.startsWith(`${leaf}_`) ? key.slice(leaf.length + 1) : '');
+        expect(forms).toEqual(expect.arrayContaining(pluralCategories));
+      }
+    }
+  });
+
   it.each(LANGUAGES)('%s produces complete strings', (lang) => {
     for (const s of allStrings(messages(lang))) {
       expect(s).not.toMatch(/#|undefined|\[object/);
@@ -52,6 +149,8 @@ describe('translations', () => {
   it('uses the right plural forms', () => {
     expect(messages('en').common.days(1)).toBe('1 day');
     expect(messages('en').common.days(3)).toBe('3 days');
+    expect(messages('en').chart.luteal(3)).toBe(' Luteal phase 3 days.');
+    expect(messages('en').insights.sd(3)).toBe('± 3 days (SD)');
     expect(messages('fr').common.days(0)).toBe('0 jour');
     expect(messages('de').rel.inDays(2)).toBe('in 2 Tagen');
     expect(messages('sv').common.days(1)).toBe('1 dag');
@@ -60,6 +159,8 @@ describe('translations', () => {
     expect(messages('ar').common.days(2)).toBe('يومان');
     expect(messages('ar').common.days(5)).toBe('5 أيام');
     expect(messages('ar').common.days(14)).toBe('14 يومًا');
+    expect(messages('ar').today.phase.late(3)).toBe('الحيض متأخر 3 يوم');
+    expect(messages('ar').rel.daysAgo(3)).toBe('قبل 3 أيام');
   });
 
   it('negotiates the language from browser preferences', () => {
