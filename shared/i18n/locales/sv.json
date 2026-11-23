@@ -13,8 +13,8 @@
     "delete": "Radera",
     "never": "aldrig",
     "today": "I dag",
-    "days_other": "{{count}} dagar",
     "days_one": "{{count}} dag",
+    "days_other": "{{count}} dagar",
     "d": "{{n}} d",
     "couldNotSave": "Kunde inte spara: {{msg}}"
   },
@@ -36,12 +36,10 @@
     "today": "i dag",
     "tomorrow": "i morgon",
     "yesterday": "i går",
-    "inDays_today": "i dag",
-    "inDays_tomorrow": "i morgon",
-    "inDays_other": "om {{count}} dagar",
     "inDays_one": "i morgon",
-    "daysAgo_other": "för {{count}} dagar sedan",
-    "daysAgo_one": "för {{count}} dag sedan"
+    "inDays_other": "om {{count}} dagar",
+    "daysAgo_one": "för {{count}} dag sedan",
+    "daysAgo_other": "för {{count}} dagar sedan"
   },
   "confidence": {
     "low": "Låg säkerhet",
@@ -195,8 +193,8 @@
       "peakFertile": "Högst fertilitet",
       "lutealConfirmed": "Efter ägglossning",
       "lutealLikely": "Troligen efter ägglossning",
-      "late_other": "Mens {{count}} dagar försenad",
-      "late_one": "Mens {{count}} dag försenad"
+      "late_one": "Mens {{count}} dag försenad",
+      "late_other": "Mens {{count}} dagar försenad"
     },
     "cycleDay": "Cykeldag",
     "ringLabel": "Cykeldag {{day}}. {{phase}}.",
@@ -221,14 +219,14 @@
       "positiveTestBody": "Den {{date}}. Du kan slå på graviditets- / pausläget i Inställningar för att stoppa prognoserna.",
       "considerTestTitle": "Överväg ett graviditetstest",
       "considerTestBody": "Mensen är försenad och oskyddat sex registrerades under det fertila fönstret.",
-      "lateTitle_other": "Mens {{count}} dagar senare än väntat",
       "lateTitle_one": "Mens {{count}} dag senare än väntat",
+      "lateTitle_other": "Mens {{count}} dagar senare än väntat",
       "lateBody": "Stress, sjukdom, resor eller senare ägglossning kan fördröja mensen. En temperatur som förblir hög i minst 18 dagar efter ägglossning kan tyda på graviditet.",
       "lhTitle": "LH-stegring i dag",
       "lhBody": "Ägglossningen sker vanligtvis inom 24–36 timmar.",
       "watchingTitle": "Väntar på temperaturstegring",
-      "watchingBody_other": "{{count}} högre mätningar över hjälplinjen ({{coverline}}) hittills. Fortsätt mäta för att bekräfta ägglossningen.",
-      "watchingBody_one": "{{count}} högre mätning över hjälplinjen ({{coverline}}) hittills. Fortsätt mäta för att bekräfta ägglossningen."
+      "watchingBody_one": "{{count}} högre mätning över hjälplinjen ({{coverline}}) hittills. Fortsätt mäta för att bekräfta ägglossningen.",
+      "watchingBody_other": "{{count}} högre mätningar över hjälplinjen ({{coverline}}) hittills. Fortsätt mäta för att bekräfta ägglossningen."
     },
     "nfp": {
       "title": "Sensiplan-utvärdering",
@@ -276,8 +274,8 @@
         "positive": "Positivt LH-test"
       },
       "sex": "Sex",
-      "symptoms_other": "{{count}} symtom",
       "symptoms_one": "{{count}} symtom",
+      "symptoms_other": "{{count}} symtom",
       "mood": "Humör",
       "note": "Anteckning",
       "logged": "Dagens registrering",
@@ -391,8 +389,8 @@
       "exception2": "andra undantaget"
     },
     "shiftConfirmed": "Stegring bekräftad dag {{day}} ({{rule}}); första högre mätningen dag {{firstHigh}}, hjälplinje {{coverline}}.",
-    "shiftPending_other": "{{count}} mätningar över hjälplinjen {{coverline}} – väntar på bekräftelse.",
     "shiftPending_one": "{{count}} mätning över hjälplinjen {{coverline}} – väntar på bekräftelse.",
+    "shiftPending_other": "{{count}} mätningar över hjälplinjen {{coverline}} – väntar på bekräftelse.",
     "mucusPeak": "Flytningstopp: ",
     "peakFound": "dag {{day}} ({{category}}), bekräftad dag {{confirmedDay}}.",
     "peakBleeding": "dag {{day}} (sista dagen med blödning utanför mensen), bekräftad dag {{confirmedDay}}.",
@@ -423,16 +421,16 @@
     "title": "Insikter",
     "averageCycle": "Genomsnittlig cykel",
     "sd": "± {{days}} (SD)",
-    "cycleCount_other": "{{count}} cykler",
     "cycleCount_one": "{{count}} cykel",
+    "cycleCount_other": "{{count}} cykler",
     "shortestLongest": "Kortaste – längsta",
-    "lastCycles_other": "senaste {{count}} cyklerna",
     "lastCycles_one": "senaste cykeln",
+    "lastCycles_other": "senaste {{count}} cyklerna",
     "periodLength": "Mensens längd",
     "average": "genomsnitt",
     "luteal": "Lutealfas",
-    "fromConfirmed_other": "från {{count}} bekräftade cykler",
     "fromConfirmed_one": "från {{count}} bekräftad cykel",
+    "fromConfirmed_other": "från {{count}} bekräftade cykler",
     "needsShift": "kräver en temperaturstegring",
     "regularity": "Regelbundenhet",
     "regularityLabel": {
@@ -531,8 +529,8 @@
       "replace": "Ersätt allt",
       "import": "Importera en Ebbwell JSON-export …",
       "confirmReplace": "Ersätta ALLA dina nuvarande registreringar med den här filen?",
-      "imported_other": "{{count}} dagar importerade",
       "imported_one": "{{count}} dag importerad",
+      "imported_other": "{{count}} dagar importerade",
       "importFailed": "Importen misslyckades: {{msg}}"
     },
     "devices": {
@@ -641,8 +639,8 @@
     "unsupported": "Den här webbläsaren stöder inte push-aviseringar.",
     "onForDevice": "På för den här enheten",
     "test": "Testa",
-    "sent_other": "Skickat till {{count}} enheter",
     "sent_one": "Skickat till {{count}} enhet",
+    "sent_other": "Skickat till {{count}} enheter",
     "enable": "Aktivera aviseringar på den här enheten",
     "blocked": "Aviseringar är blockerade i webbläsarens inställningar",
     "enabled": "Aviseringar aktiverade på den här enheten",
@@ -662,8 +660,8 @@
     "timeOf": "{{label}}: tid",
     "daysBefore": "Dagar innan",
     "onTheDay": "På den förväntade dagen",
-    "before_other": "{{count}} dagar innan",
-    "before_one": "{{count}} dag innan"
+    "before_one": "{{count}} dag innan",
+    "before_other": "{{count}} dagar innan"
   },
   "lock": {
     "title": "Applås",
@@ -699,10 +697,10 @@
   },
   "lockScreen": {
     "title": "Ebbwell är låst",
-    "digits_other": "{{count}} siffror angivna",
     "digits_one": "{{count}} siffra angiven",
-    "wrongPin_other": "Fel PIN-kod – {{count}} försök kvar",
+    "digits_other": "{{count}} siffror angivna",
     "wrongPin_one": "Fel PIN-kod – {{count}} försök kvar",
+    "wrongPin_other": "Fel PIN-kod – {{count}} försök kvar",
     "lastAttempt": "Fel PIN-kod – sista försöket innan utloggning",
     "unreachable": "Det går inte att nå servern",
     "biometricFailed": "Biometrisk kontroll misslyckades – använd din PIN-kod",
@@ -754,8 +752,8 @@
     "newPassword": "Nytt lösenord (minst {{min}} tecken)",
     "repeatPassword": "Upprepa nytt lösenord",
     "twoFactor": "Tvåfaktorsautentisering",
-    "twoFactorOn_other": "På · {{count}} återställningskoder kvar",
     "twoFactorOn_one": "På · {{count}} återställningskod kvar",
+    "twoFactorOn_other": "På · {{count}} återställningskoder kvar",
     "off": "Av",
     "on": "På",
     "requiredByAdmin": " · krävs av din administratör",
@@ -857,8 +855,8 @@
     "noCycle": "Ingen cykel registrerad än.",
     "cycleDay": "Cykeldag",
     "now": "Nu",
-    "late_other": "{{count}} dagar försenad",
     "late_one": "{{count}} dag försenad",
+    "late_other": "{{count}} dagar försenad",
     "nextPeriod": "Nästa mens",
     "fertileWindow": "Fertilt fönster",
     "ovulation_confirmed": "Ägglossning bekräftad {{date}}",
