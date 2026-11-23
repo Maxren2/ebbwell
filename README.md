@@ -90,14 +90,18 @@ override and local copy when the upstream build dependency includes a patched ve
 The `filelist` override keeps its Windows glob matching compatible with the patched
 `minimatch` major version.
 
+## Translations
+
+Locale resources are nested i18next JSON v4 catalogs in `shared/i18n/locales/`; English (`en.json`) is the source. Translate through the [Ebbwell Weblate project](https://hosted.weblate.org/projects/ebbwell/). See [docs/TRANSLATIONS.md](docs/TRANSLATIONS.md) for setup, review, and validation rules.
+
 ```
 shared/   cycle engine, partner view and quick-entry parser (pure TS, shared by browser and server) + zod schemas
-          + translations (shared/i18n: en.ts is the reference, the compiler checks the others)
+          + translations (shared/i18n/locales: English source and Weblate-compatible JSON catalogs)
 server/   Fastify API: OIDC, sessions, app lock, Web Push, sharing, encrypted SQLite store, backups
 web/      React PWA + service worker
 test/     vitest suites
 deploy/   TrueNAS compose file
-docs/     proposal and deployment guide
+docs/     proposal, deployment and translation guides
 ```
 
 ## License

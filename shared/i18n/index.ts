@@ -1,10 +1,6 @@
-import { ar } from './ar.ts';
-import { de } from './de.ts';
-import { en, type Messages } from './en.ts';
-import { fr } from './fr.ts';
-import { sv } from './sv.ts';
+import { messagesFor, type Messages } from './catalog.ts';
 
-export type { Messages } from './en.ts';
+export type { Messages } from './catalog.ts';
 
 export const LANGUAGES = ['en', 'fr', 'de', 'sv', 'ar'] as const;
 export type Lang = (typeof LANGUAGES)[number];
@@ -18,9 +14,7 @@ export const LOCALES: Record<Lang, string> = { en: 'en-GB', fr: 'fr', de: 'de', 
 /** Name of the cookie that carries the chosen language to the server-rendered pages. */
 export const LANG_COOKIE = 'ebbwell_lang';
 
-const CATALOGS: Record<Lang, Messages> = { en, fr, de, sv, ar };
-
-export const messages = (lang: Lang): Messages => CATALOGS[lang];
+export const messages = (lang: Lang): Messages => messagesFor(lang);
 export const textDirection = (lang: Lang): 'ltr' | 'rtl' => (lang === 'ar' ? 'rtl' : 'ltr');
 export const isLang = (v: unknown): v is Lang => typeof v === 'string' && (LANGUAGES as readonly string[]).includes(v);
 
